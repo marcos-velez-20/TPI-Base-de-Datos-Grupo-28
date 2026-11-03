@@ -3,7 +3,8 @@ CREATE SCHEMA public;
 
 
 -- Dominio para CUIT de 11 dígitos
-CREATE DOMAIN cuit_dom AS VARCHAR(11);
+CREATE DOMAIN cuit_dom AS VARCHAR(11)
+    CHECK (VALUE ~ '^[0-9]{11}$');
 
 -- Tipo Enumerado para los estados de documentos (Ingresos y Transferencias)
 CREATE TYPE estado_documento AS ENUM ('en_confeccion', 'terminado', 'procesado');
@@ -22,6 +23,7 @@ CREATE TABLE encargado_regional (
     nombre VARCHAR(100) NOT NULL,
     codigo_postal_localidad INTEGER NOT NULL,
     PRIMARY KEY (identificador),
+    UNIQUE (codigo_postal_localidad),
     FOREIGN KEY (codigo_postal_localidad) REFERENCES localidades (codigo_postal) ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
@@ -65,7 +67,8 @@ CREATE TABLE empresa_transporte (
     telefono VARCHAR(20) NOT NULL,
     calle VARCHAR(100) NOT NULL,
     num_calle INTEGER NOT NULL,
-    PRIMARY KEY (cod_transporte)
+    PRIMARY KEY (cod_transporte),
+    UNIQUE (cuit)
 );
 
 -- Cobertura de Transportistas por Localidad (N:M)
@@ -92,7 +95,8 @@ CREATE TABLE cepa (
     identificador INTEGER GENERATED ALWAYS AS IDENTITY,
     tipo VARCHAR(10) NOT NULL,
     nombre VARCHAR(50) NOT NULL,
-    PRIMARY KEY (identificador)
+    PRIMARY KEY (identificador),
+    UNIQUE (nombre)
 );
 
 -- Parcelas (Entidad Débil de Finca)
@@ -111,11 +115,13 @@ CREATE TABLE parcelas (
 CREATE TABLE lote_uva (
     num_lote INTEGER GENERATED ALWAYS AS IDENTITY,
     fecha_cosecha DATE NOT NULL,
+    campania SMALLINT NOT NULL,
     kilo_cosechado NUMERIC(10, 2) NOT NULL,
     bodega_entrega cuit_dom NOT NULL,
     id_finca INTEGER NOT NULL,
     id_parcela INTEGER NOT NULL,
     PRIMARY KEY (num_lote),
+    UNIQUE (id_finca, id_parcela, campania),
     FOREIGN KEY (bodega_entrega) REFERENCES bodega (cuit) ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (id_finca, id_parcela) REFERENCES parcelas (id_finca, identificador) ON DELETE RESTRICT ON UPDATE CASCADE
 );
@@ -161,7 +167,8 @@ CREATE TABLE maridaje (
     codigo INTEGER GENERATED ALWAYS AS IDENTITY,
     nombre VARCHAR(100) NOT NULL,
     temperatura NUMERIC(4, 2) NOT NULL,
-    PRIMARY KEY (codigo)
+    PRIMARY KEY (codigo),
+    UNIQUE (nombre)
 );
 
 -- Vino-Maridaje (N:M)
@@ -183,9 +190,11 @@ CREATE TABLE clientes (
     tipo_documento VARCHAR(10) NOT NULL,
     num_documento VARCHAR(20) NOT NULL,
     fecha_alta DATE NOT NULL,
+    direccion VARCHAR(200) NOT NULL,
     descuento NUMERIC(5, 2) NOT NULL,
     codigo_postal INTEGER NOT NULL,
     PRIMARY KEY (id),
+    UNIQUE (tipo_documento, num_documento),
     FOREIGN KEY (codigo_postal) REFERENCES localidades (codigo_postal) ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
@@ -284,6 +293,8 @@ CREATE TABLE contenido_transferencia (
 );
 
 -- Comprobantes (Ventas en Salas)
+-- Nota 3FN: subtotal, descuento y total se materializan por RN-08 y se
+-- recalculan mediante trigger; es una desnormalización controlada.
 CREATE TABLE comprobante (
     numero INTEGER GENERATED ALWAYS AS IDENTITY,
     fecha DATE NOT NULL,
@@ -298,6 +309,8 @@ CREATE TABLE comprobante (
 );
 
 -- Detalle / Renglón de Comprobante
+-- Nota 3FN: subtotal se materializa por RN-08 a partir de cantidad,
+-- precio_unit y descuento; es una desnormalización controlada.
 CREATE TABLE detalle_comprobante (
     cod_comprobante INTEGER NOT NULL,
     cod_vino INTEGER NOT NULL,
