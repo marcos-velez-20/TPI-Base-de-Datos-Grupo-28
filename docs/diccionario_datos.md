@@ -547,12 +547,3 @@ Se materializan `subtotal`, `descuento` y `total` en `comprobante`, y `subtotal`
 | RN-15 | Cantidades, superficies, kilos y precios son positivos; la graduación está entre 5 y 20. | `CHECK` en las columnas correspondientes. |
 
 ---
-
-## Pendientes para la Etapa 2
-
-- Implementar los `CHECK`, `UNIQUE`, `DEFAULT` y acciones referenciales marcados como **Etapa 2**.
-- Implementar las funciones `fn_total_comprobante`, `fn_stock_sala`, `fn_descuento_cliente` y `fn_antiguedad_anios`.
-- Implementar los procedimientos `sp_procesar_ingreso` y `sp_procesar_transferencia`.
-- Implementar los triggers de stock, totales, estados, bloqueo de renglones, fecha de transferencia, auditoría de precio y suma de porcentajes.
-- Implementar las vistas de stock, ventas mensuales y documentos pendientes.
-- Implementar roles y privilegios.
