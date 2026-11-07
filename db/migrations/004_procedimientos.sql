@@ -20,10 +20,10 @@ BEGIN
     END IF;
 
     FOR r IN (SELECT cod_vino, cantidad FROM detalle_ingreso WHERE num_ingreso = p_codigo_ingreso) LOOP
-        INSERT INTO deposito_central (codigo_vino, cantidad)
+        INSERT INTO stock_central (codigo_vino, cantidad)
         VALUES (r.cod_vino, r.cantidad)
         ON CONFLICT (codigo_vino)
-        DO UPDATE SET cantidad = deposito_central.cantidad + EXCLUDED.cantidad;
+        DO UPDATE SET cantidad = stock_central.cantidad + EXCLUDED.cantidad;
     END LOOP;
 
     UPDATE ingresos
@@ -55,9 +55,9 @@ BEGIN
         RAISE EXCEPTION 'La transferencia % no está en estado terminado (RN-11).', p_num_solicitud;
     END IF;
 
-    FOR r IN (SELECT cod_vino, cantidad FROM contenido_transferencia WHERE num_transferencia = p_num_solicitud) LOOP
+    FOR r IN (SELECT cod_vino, cantidad FROM detalle_transferencia WHERE num_transferencia = p_num_solicitud) LOOP
         SELECT cantidad INTO v_stock_deposito
-        FROM deposito_central
+        FROM stock_central
         WHERE codigo_vino = r.cod_vino
         FOR UPDATE;
 
@@ -66,14 +66,14 @@ BEGIN
                 r.cod_vino, r.cantidad, COALESCE(v_stock_deposito, 0);
         END IF;
 
-        UPDATE deposito_central
+        UPDATE stock_central
         SET cantidad = cantidad - r.cantidad
         WHERE codigo_vino = r.cod_vino;
 
-        INSERT INTO deposito_sala (id_sala, cod_vino, cantidad)
+        INSERT INTO stock_sala (id_sala, cod_vino, cantidad)
         VALUES (v_id_sala, r.cod_vino, r.cantidad)
         ON CONFLICT (id_sala, cod_vino)
-        DO UPDATE SET cantidad = deposito_sala.cantidad + EXCLUDED.cantidad;
+        DO UPDATE SET cantidad = stock_sala.cantidad + EXCLUDED.cantidad;
     END LOOP;
 
     UPDATE transferencias

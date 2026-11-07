@@ -15,7 +15,7 @@ BEGIN
     WHERE numero = NEW.cod_comprobante;
 
     SELECT cantidad INTO v_stock_disp
-    FROM deposito_sala
+    FROM stock_sala
     WHERE id_sala = v_id_sala AND cod_vino = NEW.cod_vino
     FOR UPDATE;
 
@@ -56,7 +56,7 @@ BEGIN
         v_nro_comp := NEW.cod_comprobante;
         SELECT id_sala INTO v_id_sala FROM comprobante WHERE numero = v_nro_comp;
 
-        UPDATE deposito_sala
+        UPDATE stock_sala
         SET cantidad = cantidad - NEW.cantidad
         WHERE id_sala = v_id_sala AND cod_vino = NEW.cod_vino;
     ELSE
@@ -203,7 +203,7 @@ BEGIN
     END IF;
 
     SELECT COALESCE(SUM(porcentaje), 0.00) INTO v_suma
-    FROM elaboracion_vino
+    FROM composicion
     WHERE id_vino = v_vino_id;
 
     IF v_suma <> 100.00 THEN
@@ -216,7 +216,7 @@ END;
 $$;
 
 CREATE CONSTRAINT TRIGGER trg_corte_suma_100
-AFTER INSERT OR UPDATE OR DELETE ON elaboracion_vino
+AFTER INSERT OR UPDATE OR DELETE ON composicion
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW
 EXECUTE FUNCTION trg_validar_porcentaje_corte();

@@ -5,7 +5,7 @@ LANGUAGE sql
 STABLE
 AS $$
     SELECT COALESCE(
-        (SELECT cantidad FROM deposito_sala WHERE id_sala = p_id_sala AND cod_vino = p_cod_vino),
+        (SELECT cantidad FROM stock_sala WHERE id_sala = p_id_sala AND cod_vino = p_cod_vino),
         0
     );
 $$;

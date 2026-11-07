@@ -48,11 +48,11 @@ ALTER TABLE parcelas
     CHECK (superficie > 0);
 
 -- CHK 6: (RN-09, RN-15) Stock nunca negativo
-ALTER TABLE deposito_sala
+ALTER TABLE stock_sala
     ADD CONSTRAINT chk_stock_sala_no_negativo 
     CHECK (cantidad >= 0);
 
-ALTER TABLE deposito_central
+ALTER TABLE stock_central
     ADD CONSTRAINT chk_stock_deposito_no_negativo 
     CHECK (cantidad >= 0);
 
@@ -75,8 +75,8 @@ ALTER TABLE detalle_ingreso
     ADD CONSTRAINT chk_detalle_ingreso_cant 
     CHECK (cantidad > 0);
 
-ALTER TABLE contenido_transferencia
-    ADD CONSTRAINT chk_contenido_transferencia_cant 
+ALTER TABLE detalle_transferencia
+    ADD CONSTRAINT chk_detalle_transferencia_cant 
     CHECK (cantidad > 0);
 
 -- CHK 10: Salario de empleados positivo
