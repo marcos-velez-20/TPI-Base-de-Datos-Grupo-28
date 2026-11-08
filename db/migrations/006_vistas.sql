@@ -1,7 +1,7 @@
 -- Vista 1: Stock total por vino
 CREATE OR REPLACE VIEW vista_stock_total_vino AS
 SELECT 
-    v.codigo AS cod_vino,
+    v.id AS cod_vino,
     v.nombre AS vino_nombre,
     v.anada,
     v.volumen,
@@ -9,9 +9,9 @@ SELECT
     COALESCE(SUM(ds.cantidad), 0)::INTEGER AS stock_salas,
     (COALESCE(dc.cantidad, 0) + COALESCE(SUM(ds.cantidad), 0))::INTEGER AS stock_total
 FROM vino v
-LEFT JOIN deposito_central dc ON v.codigo = dc.codigo_vino
-LEFT JOIN deposito_sala ds ON v.codigo = ds.cod_vino
-GROUP BY v.codigo, v.nombre, v.anada, v.volumen, dc.cantidad;
+LEFT JOIN stock_central dc ON v.id = dc.codigo_vino
+LEFT JOIN stock_sala ds ON v.id = ds.cod_vino
+GROUP BY v.id, v.nombre, v.anada, v.volumen, dc.cantidad;
 
 -- Vista 2: Ventas mensuales por sala
 CREATE OR REPLACE VIEW vista_ventas_mensuales_sala AS
@@ -39,7 +39,7 @@ WHERE t.estado <> 'procesado'
 UNION ALL
 SELECT 
     'INGRESO' AS tipo_documento,
-    i.codigo AS identificador,
+    i.id AS identificador,
     i.fecha,
     i.estado,
     NULL::INTEGER AS sala_destino
