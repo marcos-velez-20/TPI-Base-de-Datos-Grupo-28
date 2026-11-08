@@ -8,7 +8,7 @@ DECLARE
 BEGIN
     SELECT estado INTO v_estado
     FROM ingresos
-    WHERE codigo = p_codigo_ingreso
+    WHERE id = p_codigo_ingreso
     FOR UPDATE;
 
     IF NOT FOUND THEN
@@ -28,7 +28,7 @@ BEGIN
 
     UPDATE ingresos
     SET estado = 'procesado'
-    WHERE codigo = p_codigo_ingreso;
+    WHERE id = p_codigo_ingreso;
 END;
 $$;
 

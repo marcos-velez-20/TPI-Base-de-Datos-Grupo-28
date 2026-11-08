@@ -24,7 +24,7 @@ BEGIN
             NEW.cod_vino, v_id_sala, COALESCE(v_stock_disp, 0), NEW.cantidad;
     END IF;
 
-    SELECT precio INTO v_precio_actual FROM vino WHERE codigo = NEW.cod_vino;
+    SELECT precio INTO v_precio_actual FROM vino WHERE id = NEW.cod_vino;
     NEW.precio_unit := v_precio_actual;
 
     v_desc_pct := fn_descuento_cliente(v_id_cliente);
@@ -127,7 +127,7 @@ DECLARE
 BEGIN
     IF TG_TABLE_NAME = 'detalle_ingreso' THEN
         v_doc_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.num_ingreso ELSE NEW.num_ingreso END;
-        SELECT estado INTO v_estado FROM ingresos WHERE codigo = v_doc_id;
+        SELECT estado INTO v_estado FROM ingresos WHERE id = v_doc_id;
     ELSE
         v_doc_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.num_transferencia ELSE NEW.num_transferencia END;
         SELECT estado INTO v_estado FROM transferencias WHERE num_solicitud = v_doc_id;
@@ -150,7 +150,7 @@ FOR EACH ROW
 EXECUTE FUNCTION trg_bloquear_renglones_documento();
 
 CREATE TRIGGER trg_bloqueo_renglon_transferencia
-BEFORE INSERT OR UPDATE OR DELETE ON contenido_transferencia
+BEFORE INSERT OR UPDATE OR DELETE ON detalle_transferencia
 FOR EACH ROW
 EXECUTE FUNCTION trg_bloquear_renglones_documento();
 
@@ -175,7 +175,7 @@ BEGIN
             CURRENT_DATE,
             CURRENT_TIME,
             CURRENT_USER,
-            NEW.codigo
+            NEW.id
         );
     END IF;
     RETURN NEW;
@@ -198,7 +198,7 @@ DECLARE
 BEGIN
     v_vino_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.id_vino ELSE NEW.id_vino END;
 
-    IF NOT EXISTS (SELECT 1 FROM vino WHERE codigo = v_vino_id) THEN
+    IF NOT EXISTS (SELECT 1 FROM vino WHERE id = v_vino_id) THEN
         RETURN NULL;
     END IF;
 
