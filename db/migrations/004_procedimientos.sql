@@ -26,9 +26,12 @@ BEGIN
         DO UPDATE SET cantidad = stock_central.cantidad + EXCLUDED.cantidad;
     END LOOP;
 
+    -- Habilita el paso a 'procesado' solo para esta sentencia (ver TRG 3).
+    PERFORM set_config('bodegas.via_procedimiento', 'on', true);
     UPDATE ingresos
     SET estado = 'procesado'
     WHERE id = p_codigo_ingreso;
+    PERFORM set_config('bodegas.via_procedimiento', 'off', true);
 END;
 $$;
 
@@ -76,8 +79,11 @@ BEGIN
         DO UPDATE SET cantidad = stock_sala.cantidad + EXCLUDED.cantidad;
     END LOOP;
 
+    -- Habilita el paso a 'procesado' solo para esta sentencia (ver TRG 3).
+    PERFORM set_config('bodegas.via_procedimiento', 'on', true);
     UPDATE transferencias
     SET estado = 'procesado'
     WHERE num_solicitud = p_num_solicitud;
+    PERFORM set_config('bodegas.via_procedimiento', 'off', true);
 END;
 $$;
