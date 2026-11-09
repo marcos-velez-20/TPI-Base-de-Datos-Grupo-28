@@ -10,23 +10,21 @@ AS $$
     );
 $$;
 
--- FN 2: (RN-06) Obtiene el descuento asignado según el subtipo de cliente
+-- FN 2: (RN-06) Porcentaje de descuento de un cliente.
+-- Parámetros: p_id_cliente (clientes.id).
+-- Devuelve clientes.descuento, que es la única fuente de verdad: su coherencia
+-- con el tipo de cliente la garantiza chk_clientes_descuento_valido, y así un
+-- cambio como el de la consigna U6 (exportadores al 35 %) impacta en las ventas.
+-- STABLE: lee tablas, no las modifica.
 CREATE OR REPLACE FUNCTION fn_descuento_cliente(p_id_cliente INTEGER)
 RETURNS NUMERIC(5, 2)
-LANGUAGE plpgsql
+LANGUAGE sql
 STABLE
 AS $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM exportadores WHERE id = p_id_cliente) THEN
-        RETURN 30.00;
-    ELSIF EXISTS (SELECT 1 FROM distribuidores WHERE id = p_id_cliente) THEN
-        RETURN 20.00;
-    ELSIF EXISTS (SELECT 1 FROM socio_club WHERE id = p_id_cliente) THEN
-        RETURN 10.00;
-    ELSE
-        RETURN 0.00;
-    END IF;
-END;
+    SELECT COALESCE(
+        (SELECT descuento FROM clientes WHERE id = p_id_cliente),
+        0.00
+    );
 $$;
 
 -- FN 3: (RN-08) Calcula el total acumulado de un comprobante desde sus renglones
