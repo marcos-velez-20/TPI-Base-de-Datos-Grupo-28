@@ -71,6 +71,10 @@ tablas, el script falla con un error claro en lugar de quedar colgado.
 --fecha-ref FECHA     fecha de referencia ISO, por ejemplo 2026-11-08
                       (default: hoy)
 --reset               vacía las tablas generadas antes de insertar
+--modo-insercion MÉTODO
+                      copy, lotes o fila (default: copy)
+--benchmark           mide fila por fila, por lotes y COPY con 20.000
+                      renglones y ROLLBACK, sin dejar cambios
 ```
 
 Ejemplos:
@@ -84,6 +88,12 @@ python db/seed/generar_datos.py --reset --seed 7
 
 # Aborta si ya hay datos, sin borrar nada
 python db/seed/generar_datos.py --seed 42 --fecha-ref 2026-11-08
+
+# Carga por lotes en lugar de COPY
+python db/seed/generar_datos.py --reset --modo-insercion lotes
+
+# Medir los tres métodos de inserción sin dejar cambios
+python db/seed/generar_datos.py --benchmark
 ```
 
 Sin `--reset`, el script aborta si alguna tabla generada ya tiene filas. Con
@@ -92,6 +102,45 @@ las tablas generadas. Los catálogos `cepa` y `maridaje` se conservan.
 
 Si los catálogos están vacíos, el generador los carga automáticamente desde
 `cepas.csv` y `maridajes.csv`.
+
+## Métodos de inserción
+
+`--modo-insercion` controla cómo se insertan las tablas grandes (10.000 filas o
+más):
+
+- `copy` (default): usa `COPY ... FROM STDIN`. Para tablas con una columna
+  `GENERATED ALWAYS AS IDENTITY` (por ejemplo `comprobante` y `clientes`) copia
+  primero a una tabla temporal sin identity y luego ejecuta
+  `INSERT ... OVERRIDING SYSTEM VALUE SELECT ...`; así se conservan los IDs
+  explícitos y la reproducibilidad.
+- `lotes`: `INSERT` multi-fila por lotes (comportamiento histórico).
+- `fila`: un `INSERT` por fila; útil solo para mediciones.
+
+Las tablas con menos de 10.000 filas usan lotes aunque el modo sea `copy`.
+
+## Benchmark
+
+`--benchmark` mide los tres métodos con 20.000 renglones de
+`detalle_comprobante` y **no deja cambios**: cada método corre dentro de una
+transacción con `force_rollback=True`.
+
+- Requiere que la base ya tenga comprobantes y vinos (ejecutar antes el
+  generador).
+- Deshabilita los triggers de usuario dentro de la misma transacción, para
+  medir solo la inserción.
+- Al hacer ROLLBACK, PostgreSQL restaura los triggers; el script verifica que
+  los 8 queden en `'O'` y aborta si alguno quedó deshabilitado.
+- Cada método usa los mismos pares `(cod_comprobante, cod_vino)` y se revierte
+  antes del siguiente, así no hay choques de PK y la comparación es justa.
+
+Salida típica:
+
+```text
+=== Benchmark de inserción (20.000 renglones, ROLLBACK) ===
+  fila por fila      X.XX s  ... filas/s   1.00x
+  por lotes          Y.YY s  ... filas/s   A.AAx
+  COPY               Z.ZZ s  ... filas/s   B.BBx
+```
 
 ## Progreso y locks
 
@@ -129,8 +178,40 @@ ser idénticos.
 
 ## Triggers
 
-Durante la carga se deshabilitan los triggers de usuario y se vuelven a
-habilitar antes del commit. Al finalizar, verificar que todos queden en `'O'`:
+Durante la carga se deshabilitan los triggers de usuario de las tablas
+`composicion`, `detalle_comprobante`, `ingresos`, `transferencias`,
+`detalle_ingreso`, `detalle_transferencia` y `vino` con
+`ALTER TABLE ... DISABLE TRIGGER USER`, y se vuelven a habilitar en un
+`finally` antes del commit.
+
+**Por qué:** el histórico incluye documentos ya `procesado`/`terminado` con sus
+renglones; los triggers `trg_bloqueo_renglon_ingreso` y
+`trg_bloqueo_renglon_transferencia` (RN-12) rechazarían esas filas. Además, los
+triggers de totales, stock y auditoría modificarían la generación determinista.
+
+**Validaciones equivalentes en Python:**
+
+- composición al 100 % por construcción (cortes de 1, 2 y 3 cepas);
+- subtotal, descuento y total de comprobantes calculados en
+  `agregar_comprobante`;
+- stock de sala/central derivado de transferencias, ingresos y ventas, con
+  control explícito de stock central no negativo;
+- fechas coherentes (cosecha → ingreso/transferencia → venta) y primera venta
+  posterior al suministro;
+- filas de `auditoria_precio` generadas explícitamente.
+
+**Riesgos:**
+
+- si la lógica Python tuviera un error, los triggers deshabilitados no lo
+  detectarían;
+- `ENABLE TRIGGER` no revalida retroactivamente los datos ya insertados;
+- toda la carga es una única transacción: si el script falla o se corta,
+  PostgreSQL hace ROLLBACK completo (incluidos `TRUNCATE` y
+  `DISABLE TRIGGER`), por lo que no quedan datos parciales y los triggers
+  vuelven a estar habilitados;
+- no ejecutar dos cargas en paralelo: la segunda espera locks de la primera.
+
+Al finalizar, verificar que todos queden en `'O'`:
 
 ```sql
 SELECT tgname, tgenabled

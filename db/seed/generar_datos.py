@@ -4,6 +4,8 @@
 Uso:
     python db/seed/generar_datos.py --seed 42 --fecha-ref 2026-11-08
     python db/seed/generar_datos.py --reset --seed 42
+    python db/seed/generar_datos.py --reset --modo-insercion lotes
+    python db/seed/generar_datos.py --benchmark
 
 Variables de entorno:
     DB_HOST / PGHOST        (default: localhost)
@@ -137,6 +139,20 @@ SECUENCIAS = (
     ("comprobante", "numero"),
     ("auditoria_precio", "id"),
 )
+
+TABLAS_CON_IDENTITY = frozenset(tabla for tabla, _ in SECUENCIAS)
+UMBRAL_COPY = 10_000
+MODO_INSERCION = "copy"
+
+COLUMNAS_BENCHMARK = (
+    "cod_comprobante",
+    "cod_vino",
+    "cantidad",
+    "precio_unit",
+    "descuento",
+    "subtotal",
+)
+FILAS_BENCHMARK = 20_000
 
 LOCALIDADES_BASE = (
     ("San Rafael", "Mendoza", 5600),
@@ -311,9 +327,74 @@ def insertar_lote(
     tamano_lote: int = 5000,
     overriding: bool = False,
 ) -> int:
+    """Inserta filas usando el método configurado en ``MODO_INSERCION``.
+
+    Las tablas grandes usan COPY cuando el modo es ``copy``. Si la tabla tiene
+    una columna identity, COPY no puede recibir valores explícitos; en ese caso
+    se copia primero a una tabla temporal sin identity y luego se inserta con
+    ``OVERRIDING SYSTEM VALUE``.
+    """
     if not filas:
         return 0
 
+    if MODO_INSERCION == "fila":
+        return _insertar_fila(
+            conexion,
+            tabla,
+            columnas,
+            filas,
+            overriding=overriding,
+        )
+    if MODO_INSERCION == "copy" and len(filas) >= UMBRAL_COPY:
+        return _insertar_copy(
+            conexion,
+            tabla,
+            columnas,
+            filas,
+            overriding=overriding,
+        )
+    return _insertar_lotes(
+        conexion,
+        tabla,
+        columnas,
+        filas,
+        tamano_lote=tamano_lote,
+        overriding=overriding,
+    )
+
+
+def _insertar_fila(
+    conexion: Connection,
+    tabla: str,
+    columnas: Sequence[str],
+    filas: Sequence[Sequence[Any]],
+    *,
+    overriding: bool,
+) -> int:
+    modo = " OVERRIDING SYSTEM VALUE" if overriding else ""
+    marcadores = ", ".join(["%s"] * len(columnas))
+    sql = f"INSERT INTO {tabla} ({', '.join(columnas)}){modo} VALUES ({marcadores})"
+    total = len(filas)
+    informar = total >= PROGRESO_INSERCION
+    if informar:
+        logger.info("Insertando %s fila por fila: %d filas...", tabla, total)
+    with conexion.cursor() as cursor:
+        for indice, fila in enumerate(filas, start=1):
+            cursor.execute(sql, fila)
+            if informar and indice % PROGRESO_INSERCION == 0:
+                logger.info("  %s: %d/%d filas", tabla, indice, total)
+    return total
+
+
+def _insertar_lotes(
+    conexion: Connection,
+    tabla: str,
+    columnas: Sequence[str],
+    filas: Sequence[Sequence[Any]],
+    *,
+    tamano_lote: int,
+    overriding: bool,
+) -> int:
     modo = " OVERRIDING SYSTEM VALUE" if overriding else ""
     marcadores = ", ".join(["%s"] * len(columnas))
     fila_sql = f"({marcadores})"
@@ -336,8 +417,237 @@ def insertar_lote(
                     min(inicio + tamano_lote, total),
                     total,
                 )
-
     return total
+
+
+def _insertar_copy(
+    conexion: Connection,
+    tabla: str,
+    columnas: Sequence[str],
+    filas: Sequence[Sequence[Any]],
+    *,
+    overriding: bool,
+) -> int:
+    columnas_sql = ", ".join(columnas)
+    total = len(filas)
+    if overriding or tabla in TABLAS_CON_IDENTITY:
+        return _insertar_copy_con_identity(
+            conexion,
+            tabla,
+            columnas_sql,
+            filas,
+        )
+
+    logger.info("Insertando %s con COPY: %d filas...", tabla, total)
+    with conexion.cursor() as cursor:
+        with cursor.copy(f"COPY {tabla} ({columnas_sql}) FROM STDIN") as copy:
+            for indice, fila in enumerate(filas, start=1):
+                copy.write_row(fila)
+                if total >= PROGRESO_INSERCION and indice % PROGRESO_INSERCION == 0:
+                    logger.info("  %s: %d/%d filas", tabla, indice, total)
+    return total
+
+
+def _insertar_copy_con_identity(
+    conexion: Connection,
+    tabla: str,
+    columnas_sql: str,
+    filas: Sequence[Sequence[Any]],
+) -> int:
+    temporal = f"tmp_copy_{tabla}"
+    total = len(filas)
+    logger.info(
+        "Insertando %s con COPY temporal + OVERRIDING: %d filas...",
+        tabla,
+        total,
+    )
+    with conexion.cursor() as cursor:
+        cursor.execute(f"CREATE TEMP TABLE {temporal} (LIKE {tabla}) ON COMMIT DROP")
+        with cursor.copy(f"COPY {temporal} ({columnas_sql}) FROM STDIN") as copy:
+            for indice, fila in enumerate(filas, start=1):
+                copy.write_row(fila)
+                if total >= PROGRESO_INSERCION and indice % PROGRESO_INSERCION == 0:
+                    logger.info(
+                        "  %s: COPY %d/%d filas",
+                        tabla,
+                        indice,
+                        total,
+                    )
+        cursor.execute(
+            f"INSERT INTO {tabla} ({columnas_sql}) OVERRIDING SYSTEM VALUE "
+            f"SELECT {columnas_sql} FROM {temporal}"
+        )
+        cursor.execute(f"DROP TABLE IF EXISTS {temporal}")
+    return total
+
+
+def _construir_muestra_benchmark(
+    conexion: Connection,
+    cantidad: int,
+) -> list[tuple[int, int, int, Decimal, Decimal, Decimal]]:
+    with conexion.cursor() as cursor:
+        cursor.execute(
+            "SELECT numero FROM comprobante ORDER BY numero LIMIT %s",
+            (cantidad,),
+        )
+        comprobantes = [fila[0] for fila in cursor.fetchall()]
+        cursor.execute("SELECT id FROM vino ORDER BY id")
+        vinos = [fila[0] for fila in cursor.fetchall()]
+
+    if not comprobantes or not vinos:
+        raise RuntimeError(
+            "El benchmark necesita comprobantes y vinos existentes. "
+            "Ejecutá primero la generación de datos."
+        )
+    if len(comprobantes) * len(vinos) < cantidad:
+        raise RuntimeError(
+            "No hay suficientes combinaciones (comprobante, vino) "
+            "para generar la muestra del benchmark."
+        )
+
+    filas: list[tuple[int, int, int, Decimal, Decimal, Decimal]] = []
+    for indice in range(cantidad):
+        comprobante = comprobantes[indice % len(comprobantes)]
+        vino = vinos[(indice // len(comprobantes)) % len(vinos)]
+        filas.append(
+            (
+                comprobante,
+                vino,
+                1,
+                Decimal("1000.00"),
+                Decimal("100.00"),
+                Decimal("900.00"),
+            )
+        )
+    return filas
+
+
+def _triggers_deshabilitados(conexion: Connection) -> list[str]:
+    with conexion.cursor() as cursor:
+        cursor.execute(
+            "SELECT tgname FROM pg_trigger "
+            "WHERE NOT tgisinternal AND tgenabled <> 'O' ORDER BY tgname"
+        )
+        return [fila[0] for fila in cursor.fetchall()]
+
+
+def _imprimir_benchmark(resultados: Sequence[tuple[str, float]]) -> None:
+    filas_texto = f"{FILAS_BENCHMARK:,}".replace(",", ".")
+    print(f"\n=== Benchmark de inserción ({filas_texto} renglones, ROLLBACK) ===")
+    base = resultados[0][1]
+    for nombre, duracion in resultados:
+        filas_por_segundo = FILAS_BENCHMARK / duracion if duracion else 0.0
+        ganancia = base / duracion if duracion else 0.0
+        velocidad_texto = f"{filas_por_segundo:,.0f}".replace(",", ".")
+        print(
+            f"  {nombre:<14}{duracion:>8.2f} s  "
+            f"{velocidad_texto:>12} filas/s  {ganancia:>5.2f}x"
+        )
+    print()
+
+
+def ejecutar_benchmark(conexion: Connection) -> int:
+    logger.info("Preparando benchmark con %d renglones...", FILAS_BENCHMARK)
+    # 20.000 filas con pares únicos (cod_comprobante, cod_vino).
+    # Usamos comprobante 1..20000 y vino (i % 500) + 1; los pares son únicos
+    # porque cada cod_comprobante aparece una sola vez.
+    # Todos los valores referencian filas existentes en comprobante y vino,
+    # por lo que las FK se satisfacen aunque la tabla detalle_comprobante se
+    # trunque antes de cada método.
+    filas_benchmark: list[tuple[int, int, int, Decimal, Decimal, Decimal]] = [
+        (
+            i + 1,
+            (i % 500) + 1,
+            1,
+            Decimal("1000.00"),
+            Decimal("100.00"),
+            Decimal("900.00"),
+        )
+        for i in range(FILAS_BENCHMARK)
+    ]
+
+    metodos = (
+        (
+            "fila por fila",
+            lambda: _insertar_fila(
+                conexion,
+                "detalle_comprobante",
+                COLUMNAS_BENCHMARK,
+                filas_benchmark,
+                overriding=False,
+            ),
+        ),
+        (
+            "por lotes",
+            lambda: _insertar_lotes(
+                conexion,
+                "detalle_comprobante",
+                COLUMNAS_BENCHMARK,
+                filas_benchmark,
+                tamano_lote=5000,
+                overriding=False,
+            ),
+        ),
+        (
+            "COPY",
+            lambda: _insertar_copy(
+                conexion,
+                "detalle_comprobante",
+                COLUMNAS_BENCHMARK,
+                filas_benchmark,
+                overriding=False,
+            ),
+        ),
+    )
+
+    resultados: list[tuple[str, float]] = []
+    for nombre, funcion in metodos:
+        with conexion.transaction(force_rollback=True):
+            deshabilitar_triggers(conexion)
+            # Truncar tabla para evitar conflictos de PK entre métodos.
+            # TRUNCATE dentro de una transacción es deshacible con ROLLBACK.
+            with conexion.cursor() as cursor:
+                cursor.execute("TRUNCATE detalle_comprobante")
+            inicio = perf_counter()
+            funcion()
+            duracion = perf_counter() - inicio
+        resultados.append((nombre, duracion))
+        logger.info("Benchmark %s: %.2f s", nombre, duracion)
+
+    # Verificar que los 8 triggers de usuario quedaron en 'O' después de los rollbacks
+    with conexion.cursor() as cursor:
+        cursor.execute(
+            "SELECT tgname, tgenabled FROM pg_trigger "
+            "WHERE NOT tgisinternal ORDER BY tgname"
+        )
+        rows = cursor.fetchall()
+    expected = [
+        ("trg_bloqueo_renglon_ingreso", "O"),
+        ("trg_bloqueo_renglon_transferencia", "O"),
+        ("trg_corte_suma_100", "O"),
+        ("trg_ingresos_estados_before", "O"),
+        ("trg_renglon_valida_stock_before", "O"),
+        ("trg_transferencias_estados_before", "O"),
+        ("trg_venta_actualiza_stock_after", "O"),
+        ("trg_vino_auditoria_precio_after", "O"),
+    ]
+    actual = [(r[0], r[1]) for r in rows]
+    if actual != expected:
+        raise RuntimeError(
+            "Los triggers no quedaron en 'O' después del benchmark. "
+            f"Expected {expected}, got {actual}"
+        )
+
+    # Reporte simple
+    print(f"\n=== Benchmark de inserción ({FILAS_BENCHMARK} renglones, ROLLBACK) ===")
+    print(f"  {'Método':<14}{'Tiempo (s)':>8}{'Filas/s':>12}{'Ganancia':>6}")
+    base = resultados[0][1]
+    for nombre, duracion in resultados:
+        fps = FILAS_BENCHMARK / duracion if duracion else 0.0
+        gan = base / duracion if duracion else 0.0
+        print(f"  {nombre:<14}{duracion:>8.2f}{fps:>12.0f}{gan:>6.2f}x")
+    print()
+    return 0
 
 
 def hay_datos(conexion: Connection) -> str | None:
@@ -365,7 +675,9 @@ def diagnosticar_bloqueos(conexion: Connection) -> None:
         sesiones = cursor.fetchall()
 
     if not sesiones:
-        logger.info("No hay otras sesiones activas; el TRUNCATE no debería esperar locks.")
+        logger.info(
+            "No hay otras sesiones activas; el TRUNCATE no debería esperar locks."
+        )
         return
 
     logger.warning("Hay %d sesión(es) más en la base:", len(sesiones))
@@ -419,12 +731,26 @@ def truncar_tablas_generadas(conexion: Connection) -> None:
 
 
 def deshabilitar_triggers(conexion: Connection) -> None:
+    """Deshabilita los triggers de usuario durante la carga histórica.
+
+    La carga inserta documentos ya procesados/terminados, por lo que los
+    triggers de bloqueo de renglones (RN-12) rechazarían filas válidas para el
+    histórico. Además, los triggers de totales, stock y auditoría alterarían la
+    generación determinista. ``ALTER TABLE ... DISABLE TRIGGER USER`` es
+    transaccional: si la carga falla, el ROLLBACK los restaura.
+    """
     with conexion.cursor() as cursor:
         for tabla in TABLAS_CON_TRIGGERS:
             cursor.execute(f"ALTER TABLE {tabla} DISABLE TRIGGER USER")
 
 
 def habilitar_triggers(conexion: Connection) -> None:
+    """Vuelve a habilitar los triggers antes del commit de la carga.
+
+    Se ejecuta siempre desde un ``finally``. Habilitar no revalida los datos ya
+    insertados; las validaciones equivalentes se hacen en Python antes de
+    llegar a este punto.
+    """
     with conexion.cursor() as cursor:
         for tabla in TABLAS_CON_TRIGGERS:
             cursor.execute(f"ALTER TABLE {tabla} ENABLE TRIGGER USER")
@@ -487,11 +813,28 @@ def parsear_argumentos() -> argparse.Namespace:
         action="store_true",
         help="vacía las tablas generadas antes de insertar",
     )
+    parser.add_argument(
+        "--modo-insercion",
+        choices=("copy", "lotes", "fila"),
+        default="copy",
+        help="método para las tablas grandes (default: copy)",
+    )
+    parser.add_argument(
+        "--benchmark",
+        action="store_true",
+        help=(
+            "mide fila por fila, por lotes y COPY con 20.000 renglones "
+            "y ROLLBACK, sin dejar cambios"
+        ),
+    )
     return parser.parse_args()
 
 
 def main() -> int:
+    global MODO_INSERCION
+
     args = parsear_argumentos()
+    MODO_INSERCION = args.modo_insercion
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
@@ -505,6 +848,7 @@ def main() -> int:
         config["dbname"],
         config["user"],
     )
+    logger.info("Modo de inserción: %s", MODO_INSERCION)
 
     rng = random.Random(args.seed)
     faker = Faker("es_AR")
@@ -514,6 +858,11 @@ def main() -> int:
     try:
         with psycopg.connect(**config) as conexion:
             logger.info("Conexión establecida")
+            if args.benchmark:
+                return ejecutar_benchmark(conexion)
+            # Toda la carga (TRUNCATE, DISABLE TRIGGER e inserciones) vive en
+            # una única transacción. Si algo falla, el ROLLBACK restaura los
+            # triggers y no deja datos parciales.
             with conexion.transaction():
                 logger.info("Asegurando catálogos obligatorios...")
                 asegurar_catalogos(conexion)
@@ -1332,8 +1681,7 @@ def elegir_vinos_para_venta(
     elegibles = [
         id_vino
         for id_vino, fecha_venta, tipo in pares_sala_venta[id_sala]
-        if fecha_venta <= fecha
-        and (id_cliente not in sin_tinto or tipo != "tinto")
+        if fecha_venta <= fecha and (id_cliente not in sin_tinto or tipo != "tinto")
     ]
     cantidad = min(cantidad, len(elegibles))
     if cantidad == 0:
@@ -1911,9 +2259,7 @@ def generar_datos(
     )
     pares_sala, _ = medir(
         "Stock por sala (pares)",
-        lambda: generar_stock_pares(
-            rng, salas, vinos, bodega_pequena, vinos_estrella
-        ),
+        lambda: generar_stock_pares(rng, salas, vinos, bodega_pequena, vinos_estrella),
     )
     pares_sala_venta = medir(
         "Índice de venta por sala",
