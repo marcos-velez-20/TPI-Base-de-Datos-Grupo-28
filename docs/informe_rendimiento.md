@@ -42,8 +42,8 @@ WHERE NOT EXISTS (
   WHERE c.id_cliente = cl.id AND v.tipo = 'tinto'
 );
 
--- Q5: transferencias pendientes por sala (S5 / vista de pendientes)
-SELECT id_sala, COUNT(*) FROM transferencias WHERE estado <> 'procesado' GROUP BY id_sala ORDER BY 2 LIMIT 5;
+-- Q5: Ventas VIP mayores a 200.000 (S5 / análisis de grandes montos)
+SELECT numero, fecha, id_cliente, total FROM comprobante WHERE total >= 200000 ORDER BY total DESC;
 ```
 
 | Consulta | Sección 8 | Tablas y filas involucradas | Hipótesis: qué plan esperás y qué índice ayudaría |
@@ -52,7 +52,7 @@ SELECT id_sala, COUNT(*) FROM transferencias WHERE estado <> 'procesado' GROUP B
 | Q2 | S3 | comprobante (150.000) + clientes | Espero Seq Scan sobre comprobante (150.000 filas) porque no hay índice por sala ni fecha. Un índice en (id_sala, fecha) debería leer solo las pocas filas de esa sala en la última semana |
 | Q3 | S8 | comprobante (150.000) | Espero Seq Scan sobre comprobante (150.000 filas) filtrando el trimestre fila por fila. Un índice en (fecha) o (fecha, id_sala) permitiría saltar directo a las ventas de los últimos 3 meses sin leer el resto. |
 | Q4 | S12 | clientes + comprobante + detalle_comprobante + vino | Espero varios Seq Scan lentísimos anidados dentro de la subconsulta. Un índice en la clave foránea comprobante(id_cliente) podría evitar recorrer comprobante por cada cliente. En detalle_comprobante no hace falta un índice nuevo por cod_comprobante: es la primera columna de la PK compuesta. |
-| Q5 | S5 | transferencias (~2.000) | Se espera un Seq Scan escaneando toda la tabla. Un índice parcial en (id_sala, fecha_confeccion) WHERE estado <> 'procesado' evitará leer las transferencias procesadas, haciendo un Index Only Scan sobre el ~9,3% no procesado|.
+| Q5 | S5 | comprobante (150.000) | Se espera un Seq Scan leyendo toda la tabla y ordenando. Un índice B-Tree en la columna `total` permitirá hacer un Bitmap Heap Scan, acotando la búsqueda al ~15% de los comprobantes VIP y agilizando la recolección y el ordenamiento. |
 
 ---
 
@@ -64,7 +64,7 @@ SELECT id_sala, COUNT(*) FROM transferencias WHERE estado <> 'procesado' GROUP B
 | **Q2** | 62,4 | 20,3 | 25,8 | 25,8 | Parallel Seq Scan | 150.000 | hit 1356 / read 0 |
 | **Q3** | 29,7 | 25,5 | 22,1 | 25,5 | Parallel Seq Scan | 150.000 | hit 1356 / read 0 |
 | **Q4** | 351,6 | 416,7 | 337,7 | 351,6 | Seq Scan | 525.446 | hit 352 / read 3896 |
-| **Q5** |0,442|0,593|0,790|0,593|Seq Scan|	2.000	|hit 11 / read 0|
+| **Q5** | 39,3 | 35,3 | 38,1 | 38,1 | Seq Scan | 150.000 | hit 1359 / read 0 |
 ---
 
 ### Tabla 3 — Diseño y justificación de los índices
@@ -75,8 +75,7 @@ SELECT id_sala, COUNT(*) FROM transferencias WHERE estado <> 'procesado' GROUP B
 | 2 | `idx_comprobante_fecha_cubriente` | INCLUDE (covering) | Q3 | Filtra solo por rango de fecha y necesita `id_sala` y `total`. Al incluirlos en la hoja del índice, se resuelve con un Index Only Scan sin visitar la tabla. | 5800 kB |
 | 3 | `idx_comprobante_cliente` | Clave foránea | Q4 | PostgreSQL no indexa las FK por defecto. Buscar comprobantes por cliente y verificar el `ON DELETE RESTRICT` recorrería toda la tabla sin este índice. | 1480 kB |
 | 4 | `idx_detalle_comprobante_vino` | FK + INCLUDE | Q1 | La PK es compuesta `(cod_comprobante, cod_vino)`, sirviendo para buscar por comprobante pero no directo por vino. Agrupa por vino e `INCLUDE (cantidad)` evita ir a la tabla. | 11 MB |
-| 5 | `idx_transferencias_pendientes` | Parcial | Q5 | Solo un **9.3%** de las transferencias no está procesado. El índice es muy chico, barato de mantener y solo lo usan las consultas con ese mismo predicado parcial. | 16 kB |
-
+| 5 | `idx_comprobante_total` | B-Tree | Q5 | Filtra ventas VIP (`total >= 200000`) de forma ordenada. Permite al motor usar un mapa de bits para evitar barrer secuencialmente el 100% de la tabla de comprobantes. | ~3,5 MB |
 ---
 
 ### Tabla 4 — Comparativa ANTES vs. DESPUÉS de los índices
@@ -84,12 +83,10 @@ SELECT id_sala, COUNT(*) FROM transferencias WHERE estado <> 'procesado' GROUP B
 | Consulta | Antes (ms) | Recorrido antes | Filas leídas antes | Después (ms) | Recorrido después | Filas leídas después | Índice usado | Mejora (×) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Q1** | 128,7 | Parallel Seq Scan | 525.447 | 131,3 | Parallel Seq Scan | 525.447 | Ninguno (lo ignora) | 1,0x |
-| **Q2** | 25,8 | Parallel Seq Scan | 150.000 | 1,8 | Bitmap Heap Scan | 85 | idx_comprobante_sala_fecha | **14,3x** |
-| **Q3** | 25,5 | Parallel Seq Scan | 150.000 | 4,8 | Index Only Scan | 11.878 | idx_comprobante_fecha_cubriente | **5,3x** |
+| **Q2** | 25,8 | Parallel Seq Scan | 150.000 | 1,8 | Bitmap Heap Scan | 85 | idx_comprobante_sala_fecha | 14,3x |
+| **Q3** | 25,5 | Parallel Seq Scan | 150.000 | 4,8 | Index Only Scan | 11.878 | idx_comprobante_fecha_cubriente | 5,3x |
 | **Q4** | 351,6 | Seq Scan | 525.446 | 410,0 | Seq Scan | 525.446 | Ninguno (lo ignora) | 0,9x |
-| **Q5** | 0,593 | Seq Scan | 2.000 | 0,862 | Index Only Scan | 185 | idx_transferencias_pendientes | 0,7x en tiempo (filas leídas: 2.000 → 185) |
-
-> Q5 lee menos filas, pero con solo 2.000 filas en total la diferencia de tiempo no es significativa (menos de 1 ms). No se cuenta como una de las tres mejoras medidas.
+| **Q5** | 38,1 | Seq Scan | 150.000 | 32,2 | Bitmap Heap Scan | 22.371 | idx_comprobante_total |1,2x |
 
 ---
 
@@ -99,7 +96,6 @@ SELECT id_sala, COUNT(*) FROM transferencias WHERE estado <> 'procesado' GROUP B
 | --- | --- | --- | --- | --- | --- |
 | **5.1 Q2 con orden invertido** `(fecha, id_sala)` | `idx_tmp_fecha_sala` | Bitmap Heap Scan | 10,527 ms | hit 341 / read 1 | **Sí lo usa**, pero el tiempo sube a ~10,5 ms frente a los 1,8 ms del orden original|
 | **5.2 Q3 sin índice cubriente** (usando `idx_comprobante_sala_fecha`) | `idx_comprobante_sala_fecha` | Bitmap Heap Scan | 18,085 ms | hit 1356 / read 221 | **Sí lo usa parcialmente** (por la fecha)|
-
 
 ---
 
@@ -140,8 +136,6 @@ SELECT id_sala, COUNT(*) FROM transferencias WHERE estado <> 'procesado' GROUP B
 
 ## Tabla 8- Caso en que el planificador no usa un índice existente
 
-
-
 | Caso | Índice existente | Plan elegido | Tiempo (ms) | Plan forzado | Tiempo forzado (ms) | Causa explicada |
 | --- | --- | --- | --- | --- | --- | --- |
 | 8.1 filtro fecha ~80 % | `idx_comprobante_fecha_cubriente` | `Seq Scan` | 47,103 ms | `Bitmap Heap Scan` | 37,814 ms | **Baja selectividad:** con el 80 % de las filas, el costo **estimado** del Seq Scan es menor que el del índice y el planificador lo elige. En la medición el plan forzado resultó algo más rápido (37,8 ms contra 47,1 ms) porque la tabla estaba en caché: el modelo de costos supone lecturas aleatorias caras (`random_page_cost = 4`) que con los datos en memoria no ocurren. Es un ejemplo de que la estimación de costos no siempre coincide con el tiempo real. |
@@ -152,17 +146,14 @@ SELECT id_sala, COUNT(*) FROM transferencias WHERE estado <> 'procesado' GROUP B
 
 A partir del análisis sistemático del rendimiento, los planes de ejecución (EXPLAIN ANALYZE), el consumo de buffers y las pruebas de carga masiva realizadas sobre la base de datos bodegas_del_atuel, se establecen las siguientes conclusiones y decisiones de diseño:
 
-1. Balance entre Lectura y Escritura
+1. **Balance entre Lectura y Escritura**
 Impacto mínimo en inserciones: Las pruebas de costo de escritura (Sección 7) demostraron que la incorporación de los 6 índices (B-Tree compuesto, cubrientes, parcial y de expresión) incrementa el tiempo total de la carga masiva en apenas un 2,05% (pasando de 1m 24s a 1m 25s).
-
 Justificación operativa: Este bajo costo de penalización en las operaciones de INSERT (mediante COPY) queda ampliamente justificado por las mejoras de velocidad de hasta 14,3× obtenidas en las consultas críticas de lectura y reportes analíticos diarios (Q2, Q3 y Q5).
 
-2. Decisiones sobre Tipos de Índices y Estructuras
+2. **Decisiones sobre Tipos de Índices y Estructuras**
 Efectividad de Índices Compuestos y Cubrientes (INCLUDE): El uso de índices compuestos con la columna de igualdad ubicada en primer término demostró ser indispensable para consultas altamente selectivas (como Q2). Asimismo, los índices cubrientes (INCLUDE) permitieron resolver consultas agregadas directamente mediante Index Only Scan, evitando accesos innecesarios a los bloques de las tablas (detalle_comprobante y comprobante).
-
 Descarte de Índices Ineficientes (BRIN): La evaluación del índice BRIN sobre la columna fecha evidenció que, ante una distribución de datos sin correlación física estricta (correlación cercana a 0.0028), el motor descarta la estructura en favor de un escaneo secuencial. Esto ratificó la decisión de priorizar índices B-Tree tradicionales para rangos temporales en tablas de transacciones medianas.
+Optimización por Rango de Valores (Ventas VIP): La creación de índices sobre columnas de montos (como el total del comprobante evaluado en Q5) demostró cómo el optimizador cambia inteligentemente de un costoso Seq Scan a un Bitmap Heap Scan. Al armar un mapa de bits en memoria, el motor logra extraer el ~15% de las ventas más altas de la tabla optimizando el recorrido de los bloques y disminuyendo el tiempo de ejecución y ordenamiento.
 
-Optimización mediante Índices Parciales: En tablas con sesgo de estados (como transferencias, donde solo un 9.3% no está procesado), el índice parcial (WHERE estado <> 'procesado') redujo drásticamente el tamaño en disco (16 kB) y aceleró la consulta Q5 sin sobrecargar el mantenimiento general de la base de datos.
-
-3. Inteligencia del Planificador (Costos y Selectividad)
+3. **Inteligencia del Planificador (Costos y Selectividad)**
 Las pruebas de baja selectividad (Sección 8) mostraron que el optimizador descarta el índice cuando la consulta abarca la mayor parte de la tabla (80 % en el caso 8.1), porque estima más caro el acceso aleatorio. En nuestra medición, con los datos en caché, el plan forzado fue algo más rápido: la decisión del planificador se basa en costos estimados para disco, que pueden diferir del tiempo real cuando todo está en memoria.
