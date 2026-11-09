@@ -27,7 +27,7 @@ Catálogo de localidades donde la empresa tiene salas de venta.
 | Columna | Tipo | Nulo | Restricciones en 001 | Regla de negocio / Etapa 2 | Descripción |
 | --- | --- | --- | --- | --- | --- |
 | `codigo_postal` | `INTEGER` | NO | PK |  | Código postal que identifica la localidad. |
-| `nombre` | `VARCHAR(100)` | NO |  | Etapa 2: `UNIQUE (nombre, provincia)` sugerido. | Nombre de la localidad. |
+| `nombre` | `VARCHAR(100)` | NO |  | Etapa 2: `UNIQUE (nombre, provincia)` (`uq_localidad_provincia`). | Nombre de la localidad. |
 | `provincia` | `VARCHAR(100)` | NO |  |  | Provincia a la que pertenece la localidad. |
 
 ---
@@ -44,7 +44,6 @@ Responsable comercial de una localidad. Es una **entidad débil** de `localidade
 **Notas:**
 
 - Al ser la FK parte de la PK, la base de datos ya impide más de un encargado por localidad.
-- El DDL declara además `UNIQUE (codigo_postal_localidad)`. Es redundante, porque toda PK ya es única, y puede eliminarse sin cambiar el comportamiento.
 - La obligación de que toda localidad tenga encargado (cardinalidad (1,1) del DER) no se puede forzar solo con el DDL base; se controla en Etapa 2.
 
 ---
@@ -58,7 +57,7 @@ Salas de venta distribuidas en las localidades.
 | `id_sala` | `INTEGER` | NO | PK, IDENTITY |  | Identificador único de la sala. |
 | `calle` | `VARCHAR(100)` | NO |  |  | Calle de la ubicación. |
 | `numero` | `INTEGER` | NO |  |  | Número de la dirección. |
-| `dia_cierre` | `VARCHAR(20)` | NO |  | Etapa 2: `CHECK (dia_cierre IN ('Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'))`. | Día de cierre semanal. |
+| `dia_cierre` | `VARCHAR(20)` | NO |  | Etapa 2: `chk_sala_dia_cierre` (días de la semana, sin distinguir mayúsculas ni tildes). | Día de cierre semanal. |
 | `codigo_postal` | `INTEGER` | NO | FK → `localidades(codigo_postal)`; `ON DELETE RESTRICT`, `ON UPDATE CASCADE` | RN-02: una sala pertenece a una sola localidad. | Localidad donde se ubica la sala. |
 
 ---
@@ -152,7 +151,7 @@ Entidad débil de `finca`. Cada parcela pertenece a una finca y tiene una sola c
 | `id_finca` | `INTEGER` | NO | PK, FK → `finca(id)`; `ON DELETE CASCADE`, `ON UPDATE CASCADE` |  | Finca a la que pertenece. |
 | `identificador` | `INTEGER` | NO | PK (no es `IDENTITY`) |  | Número de parcela dentro de la finca (clave parcial). |
 | `superficie` | `NUMERIC(8,2)` | NO |  | Etapa 2: `CHECK (superficie > 0)`. | Superficie en hectáreas. |
-| `ano_plantacion` | `SMALLINT` | NO |  | Etapa 2: `CHECK (ano_plantacion > 0)`. | Año de plantación. |
+| `ano_plantacion` | `SMALLINT` | NO |  | Etapa 2: `CHECK (ano_plantacion BETWEEN 1900 AND 2100)`. | Año de plantación. |
 | `id_cepa` | `INTEGER` | NO | FK → `cepa(identificador)`; `ON DELETE RESTRICT`, `ON UPDATE CASCADE` | RN-04: una parcela tiene una sola cepa. | Cepa implantada. |
 
 ---
@@ -165,7 +164,7 @@ Cosecha de una parcela en una campaña. Una parcela se cosecha como máximo una 
 | --- | --- | --- | --- | --- | --- |
 | `num_lote` | `INTEGER` | NO | PK, IDENTITY |  | Identificador del lote de uva. |
 | `fecha_cosecha` | `DATE` | NO |  |  | Fecha de cosecha. |
-| `campania` | `SMALLINT` | NO | `UNIQUE (id_finca, id_parcela, campania)` | Etapa 2: `CHECK (campania > 0)`. | Año de cosecha. |
+| `campania` | `SMALLINT` | NO | `UNIQUE (id_finca, id_parcela, campania)` | Etapa 2: `CHECK (campania BETWEEN 1900 AND 2100)`. | Año de cosecha. |
 | `kilo_cosechado` | `NUMERIC(10,2)` | NO |  | Etapa 2: `CHECK (kilo_cosechado > 0)`. | Kilos cosechados. |
 | `bodega_entrega` | `cuit_dom` | NO | FK → `bodega(cuit)`; `ON DELETE RESTRICT`, `ON UPDATE CASCADE` |  | Bodega destino. |
 | `id_finca` | `INTEGER` | NO | Parte de FK compuesta |  | Parte 1 de la clave de parcela. |
@@ -183,9 +182,9 @@ Análisis de calidad de un lote de uva.
 | --- | --- | --- | --- | --- | --- |
 | `identificador` | `INTEGER` | NO | PK, IDENTITY |  | Identificador del análisis. |
 | `fecha` | `DATE` | NO |  |  | Fecha de la muestra. |
-| `brix` | `NUMERIC(5,2)` | NO |  | Etapa 2: `CHECK (brix > 0)`. | Grado de azúcar. |
-| `ph` | `NUMERIC(3,2)` | NO |  | Etapa 2: `CHECK (ph > 0)`. | Nivel de acidez/alcalinidad. |
-| `acidez_total` | `NUMERIC(5,2)` | NO |  | Etapa 2: `CHECK (acidez_total > 0)`. | Acidez total en g/L. |
+| `brix` | `NUMERIC(5,2)` | NO |  | Etapa 2: `chk_analisis_valores_positivos` (`brix > 0`). | Grado de azúcar. |
+| `ph` | `NUMERIC(3,2)` | NO |  | Etapa 2: `chk_analisis_valores_positivos` (`ph > 0`). | Nivel de acidez/alcalinidad. |
+| `acidez_total` | `NUMERIC(5,2)` | NO |  | Etapa 2: `chk_analisis_valores_positivos` (`acidez_total > 0`). | Acidez total en g/L. |
 | `num_lote` | `INTEGER` | NO | FK → `lote_uva(num_lote)`; `ON DELETE CASCADE`, `ON UPDATE CASCADE` |  | Lote analizado. |
 
 ---
@@ -202,12 +201,14 @@ Vinos elaborados por las bodegas.
 | `precio` | `NUMERIC(10,2)` | NO |  | RN-01 / Etapa 2: `CHECK (precio > 0)`. | Precio único para todas las salas. |
 | `graduacion` | `NUMERIC(4,2)` | NO |  | Etapa 2: `CHECK (graduacion BETWEEN 5 AND 20)`. | Graduación alcohólica. |
 | `tipo` | `VARCHAR(20)` | NO |  | Etapa 2: `CHECK (tipo IN ('tinto','blanco','rosado','espumante'))`. | Tipo de vino. |
-| `anada` | `SMALLINT` | NO |  | Etapa 2: `CHECK (anada > 0)`. | Año de cosecha. |
+| `anada` | `SMALLINT` | NO |  | Etapa 2: `CHECK (anada BETWEEN 1900 AND 2100)`. | Año de cosecha. |
 | `cuit_bodega` | `cuit_dom` | NO | FK → `bodega(cuit)`; `ON DELETE RESTRICT`, `ON UPDATE CASCADE` | RN-14. | Bodega que lo elabora. |
+
+**Nota:** un vino nuevo debe darse de alta junto con su composición en la misma transacción; el constraint trigger diferido `trg_vino_requiere_corte` rechaza al `COMMIT` un vino sin cepas (RN-05).
 
 ---
 
-## 14. Tabla: `elaboracion_vino`
+## 14. Tabla: `composicion`
 
 Composición (corte) de un vino a partir de una o más cepas. Es la relación N:M `compone` del DER (en el esquema relacional figura como `Composicion`).
 
@@ -249,13 +250,13 @@ Supertipo de clientes. Contiene únicamente los datos comunes a socios, distribu
 | Columna | Tipo | Nulo | Restricciones en 001 | Regla de negocio / Etapa 2 | Descripción |
 | --- | --- | --- | --- | --- | --- |
 | `id` | `INTEGER` | NO | PK, IDENTITY |  | Identificador del cliente. |
-| `tipoCliente` | `VARCHAR(100)` | NO |  | Etapa 2 (sugerido): `CHECK (tipoCliente IN ('socio','distribuidor','exportador'))` y trigger que verifique que coincida con el subtipo en el que existe el `id`. | Discriminador de la jerarquía: indica a qué subtipo pertenece el cliente. |
-| `tipo_documento` | `VARCHAR(10)` | NO |  | Etapa 2: `CHECK (tipo_documento IN ('DNI','CUIT','Pasaporte'))`. | Tipo de documento. |
+| `tipoCliente` | `VARCHAR(100)` | NO |  | Etapa 2: `chk_clientes_tipo_valido` (`socio`, `distribuidor`, `exportador`, sin distinguir mayúsculas). Los triggers `trg_*_subtipo_before` impiden registrar el `id` en otro subtipo y `trg_clientes_tipo_before` impide cambiar el tipo si ya hay fila de subtipo. | Discriminador de la jerarquía: indica a qué subtipo pertenece el cliente. |
+| `tipo_documento` | `VARCHAR(10)` | NO |  | Etapa 2: `chk_clientes_tipo_documento` (`DNI`, `CUIT`, `CUIL`, `Pasaporte`). | Tipo de documento. |
 | `num_documento` | `VARCHAR(20)` | NO | `UNIQUE (tipo_documento, num_documento)` |  | Número de documento. |
 | `fecha_alta` | `DATE` | NO |  | Etapa 2: `DEFAULT CURRENT_DATE`. | Fecha de alta en el sistema. |
 | `calle` | `VARCHAR(200)` | NO |  |  | Calle del domicilio. |
 | `numeroCalle` | `VARCHAR(200)` | NO |  |  | Número del domicilio (texto, admite valores como "S/N" o "1250 bis"). |
-| `descuento` | `NUMERIC(5,2)` | NO |  | RN-06 / Etapa 2: `CHECK (descuento IN (10,20,30))`. | Porcentaje de descuento base del cliente. |
+| `descuento` | `NUMERIC(5,2)` | NO |  | RN-06 / Etapa 2: `chk_clientes_descuento_valido`: socio 10, distribuidor 20, exportador 30 o 35 (consigna U6). | Porcentaje de descuento del cliente. Es la fuente que usa `fn_descuento_cliente` al vender. |
 | `codigo_postal` | `INTEGER` | NO | FK → `localidades(codigo_postal)`; `ON DELETE RESTRICT`, `ON UPDATE CASCADE` |  | Localidad del cliente. |
 
 **Notas:**
@@ -346,7 +347,7 @@ Cabecera de ingresos de mercadería al depósito central.
 | --- | --- | --- | --- | --- | --- |
 | `id` | `INTEGER` | NO | PK, IDENTITY |  | Número de ingreso. |
 | `fecha` | `DATE` | NO |  | Etapa 2: `DEFAULT CURRENT_DATE`. | Fecha de generación. |
-| `estado` | `estado_documento` | NO |  | RN-10 / Etapa 2: `DEFAULT 'en_confeccion'`; trigger de estados. | Estado del ingreso. |
+| `estado` | `estado_documento` | NO |  | RN-10 / Etapa 2: `DEFAULT 'en_confeccion'`; trigger de estados (nace en confección; solo `sp_procesar_ingreso` pasa a procesado). | Estado del ingreso. |
 | `cuit_bodega` | `cuit_dom` | NO | FK → `bodega(cuit)`; `ON DELETE RESTRICT`, `ON UPDATE CASCADE` |  | Bodega de origen. |
 | `cod_transporte` | `INTEGER` | NO | FK → `empresa_transporte(cod_transporte)`; `ON DELETE RESTRICT`, `ON UPDATE CASCADE` |  | Empresa que traslada la mercadería. |
 
@@ -371,8 +372,8 @@ Solicitudes de vino desde una sala al depósito central.
 | Columna | Tipo | Nulo | Restricciones en 001 | Regla de negocio / Etapa 2 | Descripción |
 | --- | --- | --- | --- | --- | --- |
 | `num_solicitud` | `INTEGER` | NO | PK, IDENTITY |  | Número de solicitud. |
-| `fecha_confeccion` | `DATE` | NO |  | RN-11 / Etapa 2: `DEFAULT CURRENT_DATE`; no modificable. | Fecha de confección. |
-| `estado` | `estado_documento` | NO |  | RN-11 / Etapa 2: `DEFAULT 'en_confeccion'`; trigger de estados. | Estado de la transferencia. |
+| `fecha_confeccion` | `DATE` | NO |  | RN-11 / Etapa 2: `DEFAULT CURRENT_DATE`; el trigger `trg_transferencias_fecha_before` fuerza la fecha actual al insertar y rechaza cambios. | Fecha de confección. |
+| `estado` | `estado_documento` | NO |  | RN-11 / Etapa 2: `DEFAULT 'en_confeccion'`; trigger de estados (nace en confección; solo `sp_procesar_transferencia` pasa a procesado). | Estado de la transferencia. |
 | `id_sala` | `INTEGER` | NO | FK → `sala_de_ventas(id_sala)`; `ON DELETE RESTRICT`, `ON UPDATE CASCADE` |  | Sala solicitante. |
 
 ---
@@ -397,9 +398,9 @@ Cabecera de ventas realizadas en las salas.
 | --- | --- | --- | --- | --- | --- |
 | `numero` | `INTEGER` | NO | PK, IDENTITY |  | Número de ticket o factura. |
 | `fecha` | `DATE` | NO |  | Etapa 2: `DEFAULT CURRENT_DATE`. | Fecha de la venta. |
-| `subtotal` | `NUMERIC(12,2)` | NO |  | RN-08 / Etapa 2: `CHECK (subtotal >= 0)`; calculado por trigger. | Suma de renglones sin descuento. |
-| `descuento` | `NUMERIC(12,2)` | NO |  | RN-08 / Etapa 2: `CHECK (descuento >= 0)`; calculado por trigger. | Monto total descontado. |
-| `total` | `NUMERIC(12,2)` | NO |  | RN-08 / Etapa 2: `CHECK (total >= 0)`; calculado por trigger. | Monto final a pagar. |
+| `subtotal` | `NUMERIC(12,2)` | NO |  | RN-08 / Etapa 2: `DEFAULT 0`, `chk_comprobante_importes`; calculado por trigger y protegido contra `UPDATE` directo. | Suma de renglones sin descuento. |
+| `descuento` | `NUMERIC(12,2)` | NO |  | RN-08 / Etapa 2: `DEFAULT 0`, `chk_comprobante_importes`; calculado por trigger y protegido contra `UPDATE` directo. | Monto total descontado. |
+| `total` | `NUMERIC(12,2)` | NO |  | RN-08 / Etapa 2: `DEFAULT 0`, `chk_comprobante_importes`; calculado por trigger con `fn_total_comprobante` y protegido contra `UPDATE` directo. | Monto final a pagar. |
 | `id_sala` | `INTEGER` | NO | FK → `sala_de_ventas(id_sala)`; `ON DELETE RESTRICT`, `ON UPDATE CASCADE` |  | Sala donde se vendió. |
 | `id_cliente` | `INTEGER` | NO | FK → `clientes(id)`; `ON DELETE RESTRICT`, `ON UPDATE CASCADE` |  | Cliente que realizó la compra. |
 
@@ -433,9 +434,9 @@ Historial de cambios de precio de los vinos (RN-13).
 | `id` | `INTEGER` | NO | PK, IDENTITY |  | Identificador del registro de auditoría. |
 | `precio_anterior` | `NUMERIC(10,2)` | NO |  |  | Precio antes del cambio. |
 | `precio_nuevo` | `NUMERIC(10,2)` | NO |  |  | Precio después del cambio. |
-| `fecha` | `DATE` | NO |  | Etapa 2: `DEFAULT CURRENT_DATE`. | Fecha del cambio. |
-| `hora` | `TIME` | NO |  | Etapa 2: `DEFAULT CURRENT_TIME`. | Hora del cambio. |
-| `usuario` | `VARCHAR(50)` | NO |  | Etapa 2: `DEFAULT CURRENT_USER`. | Usuario que ejecutó el cambio. |
+| `fecha` | `DATE` | NO |  | Completado por `trg_auditar_precio_vino` con `CURRENT_DATE`. | Fecha del cambio. |
+| `hora` | `TIME` | NO |  | Completado por el trigger con `CURRENT_TIME`. | Hora del cambio. |
+| `usuario` | `VARCHAR(50)` | NO |  | Completado por el trigger con `CURRENT_USER`. | Usuario que ejecutó el cambio. |
 | `id_vino` | `INTEGER` | NO | FK → `vino(id)`; `ON DELETE CASCADE`, `ON UPDATE CASCADE` | RN-13: alta automática mediante trigger `AFTER UPDATE` en `vino`. | Vino modificado. |
 
 ---
@@ -454,12 +455,12 @@ Todas las columnas contienen valores atómicos y no existen grupos repetitivos:
 
 - Los domicilios se dividen en calle y número (`calle`/`num_calle` o `calle`/`numero` o `calle`/`numeroCalle`), en lugar de un único texto de dirección.
 - Las personas se separan en `nombre` y `apellido` (`socio_club`).
-- Los atributos multivaluados se llevan a tablas propias: los permisos de un exportador (`permisos`), los análisis de un lote (`analisis_calidad`), las localidades que cubre un transportista (`transportista_de_localidad`) y las cepas de un vino (`elaboracion_vino`).
+- Los atributos multivaluados se llevan a tablas propias: los permisos de un exportador (`permisos`), los análisis de un lote (`analisis_calidad`), las localidades que cubre un transportista (`transportista_de_localidad`) y las cepas de un vino (`composicion`).
 
 Las relaciones N:M se resolvieron con tablas intermedias:
 
 - `transportista_de_localidad`
-- `elaboracion_vino`
+- `composicion`
 - `vino_maridaje`
 - `stock_sala`
 - `detalle_ingreso`
@@ -475,7 +476,7 @@ Las tablas con clave simple cumplen 2FN de forma automática, porque una depende
 - `detalle_transferencia`: `(num_transferencia, cod_vino)` determina `cantidad`.
 - `detalle_comprobante`: `(cod_comprobante, cod_vino)` determina `cantidad`, `precio_unit`, `descuento` y `subtotal`.
 - `stock_sala`: `(id_sala, cod_vino)` determina `cantidad`.
-- `elaboracion_vino`: `(id_cepa, id_vino)` determina `porcentaje`.
+- `composicion`: `(id_cepa, id_vino)` determina `porcentaje`.
 - `vino_maridaje` y `transportista_de_localidad`: todos sus atributos forman parte de la clave.
 - `lote_uva`: tiene clave simple `num_lote`; `(id_finca, id_parcela, campania)` es clave candidata y los demás atributos dependen de ella completa.
 - `encargado_regional` y `stock_central`: su clave es simple (la FK identificadora), aunque se trate de entidades débiles.
@@ -498,7 +499,7 @@ Dependencias funcionales relevantes de cada relación:
 - `lote_uva`: `num_lote → fecha_cosecha, campania, kilo_cosechado, bodega_entrega, id_finca, id_parcela`; `(id_finca, id_parcela, campania)` es clave candidata.
 - `analisis_calidad`: `identificador → fecha, brix, ph, acidez_total, num_lote`.
 - `vino`: `id → nombre, volumen, precio, graduacion, tipo, anada, cuit_bodega`.
-- `elaboracion_vino`: `(id_cepa, id_vino) → porcentaje`.
+- `composicion`: `(id_cepa, id_vino) → porcentaje`.
 - `maridaje`: `id → nombre, temperatura`; `nombre` es clave candidata por `UNIQUE`.
 - `clientes`: `id → tipoCliente, tipo_documento, num_documento, fecha_alta, calle, numeroCalle, descuento, codigo_postal`; `(tipo_documento, num_documento)` es clave candidata.
 - `socio_club`: `id → nombre, apellido`.
@@ -524,8 +525,8 @@ La 3FN se logra porque los datos descriptivos de una entidad se guardan **una so
 | Nombre y provincia de la localidad | `localidades` | `codigo_postal` (en `sala_de_ventas`, `clientes`, `encargado_regional`, `transportista_de_localidad`) |
 | Razón social y domicilio de la bodega | `bodega` | `cuit` (en `vino`, `lote_uva`, `ingresos`) |
 | Razón social, contacto y domicilio del transportista | `empresa_transporte` | `cod_transporte` (en `ingresos`, `transportista_de_localidad`) |
-| Nombre, tipo, precio vigente, graduación y añada del vino | `vino` | `id` (en `stock_*`, `detalle_*`, `elaboracion_vino`, `vino_maridaje`, `auditoria_precio`) |
-| Tipo y nombre de la cepa | `cepa` | `identificador` (en `parcelas`, `elaboracion_vino`) |
+| Nombre, tipo, precio vigente, graduación y añada del vino | `vino` | `id` (en `stock_*`, `detalle_*`, `composicion`, `vino_maridaje`, `auditoria_precio`) |
+| Tipo y nombre de la cepa | `cepa` | `identificador` (en `parcelas`, `composicion`) |
 | Nombre, superficie y ubicación de la finca | `finca` | `id_finca` (en `parcelas`) |
 | Nombre y temperatura del maridaje | `maridaje` | `id` (en `vino_maridaje`) |
 | Datos de la sala (dirección, día de cierre) | `sala_de_ventas` | `id_sala` (en `empleado`, `stock_sala`, `transferencias`, `comprobante`) |
@@ -603,7 +604,6 @@ Se materializan `subtotal`, `descuento` y `total` en `comprobante`, y `subtotal`
 
 - Algunas columnas del DDL usan camelCase (`tipoCliente`, `numeroCalle`, `razonSocial`) mientras el resto usa snake_case. Como se crearon sin comillas, PostgreSQL las guarda en minúsculas (`tipocliente`, `numerocalle`, `razonsocial`). Se recomienda unificarlas a `tipo_cliente`, `numero_calle` y `razon_social`.
 - `clientes.numeroCalle` es `VARCHAR(200)`, mientras que el número de domicilio en las demás tablas es `INTEGER`.
-- `encargado_regional` declara `UNIQUE` sobre su propia PK (redundante).
 
 ---
 
@@ -615,8 +615,8 @@ Se materializan `subtotal`, `descuento` y `total` en `comprobante`, y `subtotal`
 | RN-02 | Una sala pertenece a una localidad y cada localidad tiene un único encargado regional. | FK `sala_de_ventas.codigo_postal` + PK de `encargado_regional` sobre `codigo_postal_localidad`. |
 | RN-03 | Cada empleado trabaja en una sola sala. | FK `empleado.id_sala` `NOT NULL`. |
 | RN-04 | Una parcela tiene una sola cepa y se cosecha como máximo una vez por campaña. | FK `parcelas.id_cepa` + `UNIQUE (id_finca, id_parcela, campania)`. |
-| RN-05 | Los porcentajes de corte de un vino suman 100. | Constraint trigger diferido sobre `elaboracion_vino`. |
-| RN-06 | El descuento depende del tipo de cliente: socio 10%, distribuidor 20%, exportador 30%. | Función de descuento + `CHECK (descuento IN (10,20,30))` + control de coherencia con `tipoCliente`. |
+| RN-05 | Los porcentajes de corte de un vino suman 100. | Constraint triggers diferidos sobre `composicion` y `vino`. |
+| RN-06 | El descuento depende del tipo de cliente: socio 10%, distribuidor 20%, exportador 30%. | `fn_descuento_cliente` + `chk_clientes_descuento_valido` (descuento coherente con `tipoCliente`) + triggers de subtipo exclusivo. |
 | RN-07 | Un exportador puede tener varios permisos y el vencimiento es posterior a la emisión. | Tabla `permisos` + `CHECK (fecha_vencimiento > fecha_emision)`. |
 | RN-08 | El total del comprobante es la suma de sus renglones con el descuento aplicado. | Función de cálculo + trigger `AFTER INSERT/UPDATE/DELETE` en `detalle_comprobante`. |
 | RN-09 | No se puede vender más de lo que hay en stock y el stock nunca es negativo. | Trigger `BEFORE INSERT` + `CHECK (cantidad >= 0)` en `stock_sala` y `stock_central`. |
@@ -642,7 +642,7 @@ El DER y el esquema relacional usan nombres conceptuales. Este diccionario sigue
 | `Lote Uva.numero` | `lote_uva.num_lote` |
 | `Analisis Calidad` (`id`, `acidez`, `numeroLote`) | `analisis_calidad` (`identificador`, `acidez_total`, `num_lote`) |
 | `Vino.codigo` | `vino.id` |
-| `Composicion` (`idCepa`, `codigoVino`) | `elaboracion_vino` (`id_cepa`, `id_vino`) |
+| `Composicion` (`idCepa`, `codigoVino`) | `composicion` (`id_cepa`, `id_vino`) |
 | `Maridaje` / `Vino Maridaje` | `maridaje` / `vino_maridaje` (`cod_maridaje`) |
 | `Empresa Transporte.codigo` | `empresa_transporte.cod_transporte` |
 | `Ingreso.codigo` / `Detalle Ingreso.codigoIngreso` | `ingresos.id` / `detalle_ingreso.num_ingreso` |

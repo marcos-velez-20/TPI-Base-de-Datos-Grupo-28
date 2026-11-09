@@ -22,7 +22,6 @@ CREATE TABLE encargado_regional (
     nombre VARCHAR(100) NOT NULL,
     codigo_postal_localidad INTEGER NOT NULL,
     PRIMARY KEY (codigo_postal_localidad),
-    UNIQUE (codigo_postal_localidad),
     FOREIGN KEY (codigo_postal_localidad) REFERENCES localidades (codigo_postal) ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
