@@ -30,12 +30,13 @@ pip install -r db/seed/requirements.txt
 ## Orden de ejecución
 
 1. Crear la base y aplicar las migraciones (`001_esquema.sql` a
-   `007_roles.sql`, en orden).
+   `008_indices.sql`, en orden). Para medir la Etapa 4 «sin índices», omitir
+   `008_indices.sql` y aplicarlo después.
 2. Cargar los catálogos obligatorios.
 3. Ejecutar el generador.
 
 ```bash
-docker compose up -d postgres
+docker compose up -d db
 
 for archivo in db/migrations/*.sql; do
   docker exec -i postgres-bodega psql -U postgres -d bodegas_del_atuel \
@@ -129,7 +130,7 @@ transacción con `force_rollback=True`.
 - Deshabilita los triggers de usuario dentro de la misma transacción, para
   medir solo la inserción.
 - Al hacer ROLLBACK, PostgreSQL restaura los triggers; el script verifica que
-  los 8 queden en `'O'` y aborta si alguno quedó deshabilitado.
+  todos queden en `'O'` y aborta si alguno quedó deshabilitado.
 - Cada método usa los mismos pares `(cod_comprobante, cod_vino)` y se revierte
   antes del siguiente, así no hay choques de PK y la comparación es justa.
 
@@ -200,6 +201,13 @@ triggers de totales, stock y auditoría modificarían la generación determinist
   posterior al suministro;
 - filas de `auditoria_precio` generadas explícitamente.
 
+**Triggers que quedan activos durante la carga:** los de `comprobante`
+(protección de importes, solo `UPDATE`), `clientes` y los subtipos
+(`socio_club`, `distribuidores`, `exportadores`). El generador es compatible:
+usa `tipoCliente` `socio`, `distribuidor` y `exportador` con su descuento,
+registra cada cliente solo en su subtipo y no modifica los importes de
+`comprobante`. Los `CHECK` también se validan durante la carga.
+
 **Riesgos:**
 
 - si la lógica Python tuviera un error, los triggers deshabilitados no lo
@@ -236,32 +244,39 @@ WHERE NOT tgisinternal;
 
 ## Dump comprimido
 
-Para crear una copia de seguridad comprimida de la base de datos:
+Crear la copia de seguridad (formato SQL comprimido):
 
 ```bash
-docker exec postgres-bodega pg_dump -U postgres -d bodegas_del_atuel --no-owner --no-acl | gzip > dump_completo.sql.gz
+docker exec postgres-bodega pg_dump -U postgres -d bodegas_del_atuel \
+  --no-owner --no-acl | gzip > dump_completo.sql.gz
 ```
 
-Para restaurar la base en un nuevo contenedor o instancia:
+Restaurar en una base nueva y volver a aplicar los roles (el dump se genera
+sin dueños ni permisos):
 
 ```bash
-gunzip -c dump_completo.sql.gz | docker exec -i postgres-bodega psql -U postgres -c "CREATE DATABASE bodegas_nueva"
-# o contra una base ya creada:
-# gunzip -c dump_completo.sql.gz | psql -U postgres -d bodegas_nueva
+docker exec postgres-bodega createdb -U postgres bodegas_nueva
+gunzip -c dump_completo.sql.gz \
+  | docker exec -i postgres-bodega psql -U postgres -d bodegas_nueva -v ON_ERROR_STOP=1
+docker exec -i postgres-bodega psql -U postgres -d bodegas_nueva -v ON_ERROR_STOP=1 \
+  < db/migrations/007_roles.sql
 ```
 
-Para verificar los conteos después de la restauración:
+Verificar que los conteos coincidan con la base original:
 
 ```bash
-gunzip -c dump_completo.sql.gz | docker exec -i postgres-bodega psql -U postgres -d bodegas_nueva -f db/migrations/001_esquema.sql
-
-# Luego dentro de psql:
-SELECT COUNT(*) FROM comprobante;
-SELECT COUNT(*) FROM vino;
--- ... verificar todas las tablas esperadas
+for base in bodegas_del_atuel bodegas_nueva; do
+  echo "== $base"
+  docker exec postgres-bodega psql -U postgres -d "$base" -At -c \
+    "SELECT 'comprobante', count(*) FROM comprobante
+     UNION ALL SELECT 'detalle_comprobante', count(*) FROM detalle_comprobante
+     UNION ALL SELECT 'clientes', count(*) FROM clientes
+     UNION ALL SELECT 'vino', count(*) FROM vino"
+done
 ```
 
-Si el dump comprimido supera los 100 MB, no lo suba al repositorio y agréguelo a `.gitignore`. El tamaño actual es de **9.8 MB** (puede variar según la configuración de la base), por lo que se conserva el archivo generado.
+Si el dump comprimido supera los 100 MB, no subirlo al repositorio y agregarlo
+a `.gitignore`. El tamaño actual es de **9.8 MB**.
 
 ## Reporte de la Etapa 3
 

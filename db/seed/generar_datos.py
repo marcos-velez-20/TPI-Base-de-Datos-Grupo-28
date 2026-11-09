@@ -614,28 +614,18 @@ def ejecutar_benchmark(conexion: Connection) -> int:
         resultados.append((nombre, duracion))
         logger.info("Benchmark %s: %.2f s", nombre, duracion)
 
-    # Verificar que los 8 triggers de usuario quedaron en 'O' después de los rollbacks
+    # Verificar que ningún trigger de usuario quedó deshabilitado después de los
+    # rollbacks. No se usa una lista fija para no romperse al agregar triggers.
     with conexion.cursor() as cursor:
         cursor.execute(
             "SELECT tgname, tgenabled FROM pg_trigger "
-            "WHERE NOT tgisinternal ORDER BY tgname"
+            "WHERE NOT tgisinternal AND tgenabled <> 'O' ORDER BY tgname"
         )
-        rows = cursor.fetchall()
-    expected = [
-        ("trg_bloqueo_renglon_ingreso", "O"),
-        ("trg_bloqueo_renglon_transferencia", "O"),
-        ("trg_corte_suma_100", "O"),
-        ("trg_ingresos_estados_before", "O"),
-        ("trg_renglon_valida_stock_before", "O"),
-        ("trg_transferencias_estados_before", "O"),
-        ("trg_venta_actualiza_stock_after", "O"),
-        ("trg_vino_auditoria_precio_after", "O"),
-    ]
-    actual = [(r[0], r[1]) for r in rows]
-    if actual != expected:
+        deshabilitados = cursor.fetchall()
+    if deshabilitados:
         raise RuntimeError(
-            "Los triggers no quedaron en 'O' después del benchmark. "
-            f"Expected {expected}, got {actual}"
+            "Los triggers no quedaron en 'O' después del benchmark: "
+            f"{deshabilitados}"
         )
 
     # Reporte simple
