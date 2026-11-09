@@ -827,6 +827,14 @@ def parsear_argumentos() -> argparse.Namespace:
             "y ROLLBACK, sin dejar cambios"
         ),
     )
+    parser.add_argument(
+        "--controles",
+        action="store_true",
+        help=(
+            "ejecuta consultas de control de integridad sobre la base actual "
+            "e imprime OK/FALLA por control con cantidad de filas problemáticas"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -858,6 +866,8 @@ def main() -> int:
     try:
         with psycopg.connect(**config) as conexion:
             logger.info("Conexión establecida")
+            if args.controles:
+                return ejecutar_controles(conexion)
             if args.benchmark:
                 return ejecutar_benchmark(conexion)
             # Toda la carga (TRUNCATE, DISABLE TRIGGER e inserciones) vive en
@@ -2385,6 +2395,128 @@ def imprimir_reporte(conexion: Connection, tiempos: Sequence[tuple[str, float]])
     print(f"\nHash global: {resumen_global.hexdigest()}")
 
     return 0 if tablas_mas_de_10k >= 3 and tablas_mas_de_100k >= 1 else 1
+
+
+def ejecutar_controles(conexion: Connection) -> int:
+    controles = [
+        (
+            "FK stock_sala.id_sala a sala_de_ventas",
+            "SELECT COUNT(*) FROM stock_sala s LEFT JOIN sala_de_ventas v ON s.id_sala = v.id_sala WHERE v.id_sala IS NULL",
+        ),
+        (
+            "FK stock_sala.cod_vino a vino",
+            "SELECT COUNT(*) FROM stock_sala s LEFT JOIN vino v ON s.cod_vino = v.id WHERE v.id IS NULL",
+        ),
+        (
+            "FK stock_central.codigo_vino a vino",
+            "SELECT COUNT(*) FROM stock_central s LEFT JOIN vino v ON s.codigo_vino = v.id WHERE v.id IS NULL",
+        ),
+        (
+            "FK comprobante.id_sala a sala_de_ventas",
+            "SELECT COUNT(*) FROM comprobante c LEFT JOIN sala_de_ventas v ON c.id_sala = v.id_sala WHERE v.id_sala IS NULL",
+        ),
+        (
+            "FK comprobante.id_cliente a clientes",
+            "SELECT COUNT(*) FROM comprobante c LEFT JOIN clientes cl ON c.id_cliente = cl.id WHERE cl.id IS NULL",
+        ),
+        (
+            "FK detalle_comprobante.cod_comprobante a comprobante",
+            "SELECT COUNT(*) FROM detalle_comprobante dc LEFT JOIN comprobante c ON dc.cod_comprobante = c.numero WHERE c.numero IS NULL",
+        ),
+        (
+            "FK detalle_comprobante.cod_vino a vino",
+            "SELECT COUNT(*) FROM detalle_comprobante dc LEFT JOIN vino v ON dc.cod_vino = v.id WHERE v.id IS NULL",
+        ),
+        (
+            "FK detalle_ingreso.num_ingreso a ingresos",
+            "SELECT COUNT(*) FROM detalle_ingreso di LEFT JOIN ingresos i ON di.num_ingreso = i.id WHERE i.id IS NULL",
+        ),
+        (
+            "FK detalle_ingreso.cod_vino a vino",
+            "SELECT COUNT(*) FROM detalle_ingreso di LEFT JOIN vino v ON di.cod_vino = v.id WHERE v.id IS NULL",
+        ),
+        (
+            "FK detalle_transferencia.num_transferencia a transferencias",
+            "SELECT COUNT(*) FROM detalle_transferencia dt LEFT JOIN transferencias t ON dt.num_transferencia = t.num_solicitud WHERE t.num_solicitud IS NULL",
+        ),
+        (
+            "FK detalle_transferencia.cod_vino a vino",
+            "SELECT COUNT(*) FROM detalle_transferencia dt LEFT JOIN vino v ON dt.cod_vino = v.id WHERE v.id IS NULL",
+        ),
+        (
+            "FK permisos.id_exportador a exportadores",
+            "SELECT COUNT(*) FROM permisos p LEFT JOIN exportadores e ON p.id_exportador = e.id WHERE e.id IS NULL",
+        ),
+        (
+            "Stock negativo stock_sala",
+            "SELECT COUNT(*) FROM stock_sala WHERE cantidad < 0",
+        ),
+        (
+            "Stock negativo stock_central",
+            "SELECT COUNT(*) FROM stock_central WHERE cantidad < 0",
+        ),
+        (
+            "Comprobante subtotal inconsistente",
+            "SELECT COUNT(*) FROM comprobante c WHERE ((SELECT COALESCE(SUM(dc.precio_unit * dc.cantidad), 0.00) FROM detalle_comprobante dc WHERE dc.cod_comprobante = c.numero) != c.subtotal)",
+        ),
+        (
+            "Comprobante descuento inconsistente",
+            "SELECT COUNT(*) FROM comprobante c WHERE ((SELECT COALESCE(SUM(dc.descuento), 0.00) FROM detalle_comprobante dc WHERE dc.cod_comprobante = c.numero) != c.descuento)",
+        ),
+        (
+            "Comprobante total inconsistente",
+            "SELECT COUNT(*) FROM comprobante c WHERE ((SELECT COALESCE(SUM(dc.subtotal), 0.00) FROM detalle_comprobante dc WHERE dc.cod_comprobante = c.numero) != c.total)",
+        ),
+        (
+            "Vino composicion suma <> 100",
+            "SELECT COUNT(*) FROM vino v WHERE ((SELECT COALESCE(SUM(porcentaje), 0.00) FROM composicion c WHERE c.id_vino = v.id) != 100.00)",
+        ),
+        (
+            "Permisos vencimiento <= emision",
+            "SELECT COUNT(*) FROM permisos WHERE fecha_vencimiento <= fecha_emision",
+        ),
+        (
+            "Comprobante fecha > CURRENT_DATE",
+            "SELECT COUNT(*) FROM comprobante WHERE fecha > CURRENT_DATE",
+        ),
+        (
+            "Ingresos fecha > CURRENT_DATE",
+            "SELECT COUNT(*) FROM ingresos WHERE fecha > CURRENT_DATE",
+        ),
+        (
+            "Transferencias fecha_confeccion > CURRENT_DATE",
+            "SELECT COUNT(*) FROM transferencias WHERE fecha_confeccion > CURRENT_DATE",
+        ),
+        (
+            "Ingresos estado inválido",
+            "SELECT COUNT(*) FROM ingresos WHERE estado NOT IN ('en_confeccion', 'terminado', 'procesado')",
+        ),
+        (
+            "Transferencias estado inválido",
+            "SELECT COUNT(*) FROM transferencias WHERE estado NOT IN ('en_confeccion', 'terminado', 'procesado')",
+        ),
+    ]
+
+    print("\n=== Reporte de controles de integridad ===")
+    fallas = 0
+    for nombre, sql in controles:
+        with conexion.cursor() as cursor:
+            cursor.execute(sql)
+            filas = cursor.fetchone()[0]
+        if filas == 0:
+            print(f"  OK    {nombre:<60} (0 filas problemáticas)")
+        else:
+            print(f"  FALLA {nombre:<60} ({filas} filas problemáticas)")
+            fallas += 1
+
+    print()
+    if fallas == 0:
+        print("Todos los controles pasaron OK.")
+    else:
+        print(f"{fallas} control(es) con FALLA.")
+    print()
+
+    return 1 if fallas > 0 else 0
 
 
 if __name__ == "__main__":

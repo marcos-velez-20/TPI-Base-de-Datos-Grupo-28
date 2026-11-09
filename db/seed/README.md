@@ -234,16 +234,56 @@ WHERE NOT tgisinternal;
 | Renglones de ingreso y transferencia | 14.500 |
 | Stock central y por sala | 5.000 |
 
-## Escenarios incluidos
+## Dump comprimido
 
-- Vino `Malbec Reserva` 2021, 750 ml, con corte Malbec 85 / Cabernet 15 y
-  maridajes Carnes rojas y Quesos duros.
-- Cepa Semillón sin parcelas ni composiciones.
-- Ventas de aproximadamente seis años, con actividad en la última semana,
-  mes y trimestre.
-- Clientes socios sin compras, clientes que nunca compraron tintos y clientes
-  forzados a comprar los cinco vinos de la bodega pequeña.
-- Vinos estrella vendidos en todas las salas y un vino reservado ausente de la
-  sala 15 pero con stock en el depósito central.
-- Documentos en distintos estados, con ingresos y transferencias procesados
-  antes de las ventas, y sin stock negativo.
+Para crear una copia de seguridad comprimida de la base de datos:
+
+```bash
+docker exec postgres-bodega pg_dump -U postgres -d bodegas_del_atuel --no-owner --no-acl | gzip > dump_completo.sql.gz
+```
+
+Para restaurar la base en un nuevo contenedor o instancia:
+
+```bash
+gunzip -c dump_completo.sql.gz | docker exec -i postgres-bodega psql -U postgres -c "CREATE DATABASE bodegas_nueva"
+# o contra una base ya creada:
+# gunzip -c dump_completo.sql.gz | psql -U postgres -d bodegas_nueva
+```
+
+Para verificar los conteos después de la restauración:
+
+```bash
+gunzip -c dump_completo.sql.gz | docker exec -i postgres-bodega psql -U postgres -d bodegas_nueva -f db/migrations/001_esquema.sql
+
+# Luego dentro de psql:
+SELECT COUNT(*) FROM comprobante;
+SELECT COUNT(*) FROM vino;
+-- ... verificar todas las tablas esperadas
+```
+
+Si el dump comprimido supera los 100 MB, no lo suba al repositorio y agréguelo a `.gitignore`. El tamaño actual es de **9.8 MB** (puede variar según la configuración de la base), por lo que se conserva el archivo generado.
+
+## Reporte de la Etapa 3
+
+A continuación se detallan los resultados de la Etapa 3 de generación:
+
+- **Conteos principales:**
+  - Comprobantes: 150.000
+  - Vinos: 500
+  - Permisos: 3.000
+  - Stock central: 500
+  - Stock sala: 4.500
+  - Ingresos: 1.700
+  - Transferencias: 1.995
+
+- **Benchmark de inserción (20.000 renglones, ROLLBACK):**
+  - Fila por fila: **31.82 s**
+  - Por lotes: **11.93 s**
+  - COPY: **5.02 s**
+
+- **Estrategia de triggers:**
+  - Durante la carga masiva se deshabilitan los triggers de usuario de las tablas `composicion`, `detalle_comprobante`, `ingresos`, `transferencias`, `detalle_ingreso`, `detalle_transferencia` y `vino` con `ALTER TABLE ... DISABLE TRIGGER USER`, y se vuelven a habilitar en un `finally` antes del commit.
+  - Esto permite insertar documentos históricos ya `procesado`/`terminado` sin que los triggers de bloqueo (RN-12) rechacen filas válidas, y evita que los triggers de totales, stock y auditoríaalteren la generación determinista.
+  - Las validaciones equivalentes se realizan en Python antes de la inserción: composición al 100% por construcción, subtotal/descuento/total de comprobantes calculados explícitamente, stock de sala/central no negativo, fechas coherentes y auditoría de precio.
+
+- **Hash global:** `47a387a0eb2a4db3b4b0930f16273cba8523e00d8c97212a9c27cc5d605fdf18`
