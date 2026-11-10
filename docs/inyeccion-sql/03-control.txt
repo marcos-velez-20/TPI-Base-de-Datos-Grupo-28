@@ -1,0 +1,7 @@
+HTTP/1.1 200 OK
+date: Tue, 10 Nov 2026 01:49:25 GMT
+server: uvicorn
+content-length: 210
+content-type: application/json
+
+{"page":1,"limit":1,"total":500,"items":[{"id":1,"nombre":"Malbec Reserva","tipo":"tinto","anada":2021,"volumen":750,"precio":12500.0,"graduacion":14.0,"cuit_bodega":"34443924465","bodega":"Bodega Los Andes"}]}
