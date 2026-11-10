@@ -1,0 +1,19 @@
+.vino-form { background: #fff; border: 1px solid var(--borde); border-radius: 8px; padding: 1rem 1.2rem; display: flex; flex-direction: column; gap: 1rem; }
+.vino-form-grilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.8rem; }
+.vino-form-ancho { grid-column: 1 / -1; }
+.vino-bloque { border: 1px solid var(--borde); border-radius: 8px; padding: 0.6rem 0.9rem 0.9rem; margin: 0; }
+.vino-bloque legend { color: var(--vino); font-weight: 600; padding: 0 0.4rem; }
+.vino-fila { display: flex; gap: 0.8rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.vino-fila label { min-width: 180px; }
+.vino-fila-pie { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+.vino-suma { color: #555; }
+.vino-maridajes { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; }
+.vino-check { flex-direction: row; align-items: center; gap: 0.4rem; font-size: 0.9rem; }
+.vino-acciones { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+.vino-acciones .peligro { margin-left: auto; background: var(--error); border-color: var(--error); }
+
+/* Campo resaltado cuando el mensaje de la API lo nombra (el mensaje en sí no se modifica) */
+.campo-error { color: var(--error); }
+.campo-error input, .campo-error select { border-color: var(--error); box-shadow: 0 0 0 1px var(--error); }
+fieldset.campo-error { border-color: var(--error); }
+fieldset.campo-error legend { color: var(--error); }
