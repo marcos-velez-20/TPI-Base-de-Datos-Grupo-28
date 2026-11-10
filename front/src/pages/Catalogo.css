@@ -1,0 +1,11 @@
+.catalogo-cabecera { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.filtros { display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: flex-end; background: #fff; border: 1px solid var(--borde); border-radius: 8px; padding: 0.8rem; margin-bottom: 1rem; }
+.filtros label { min-width: 140px; }
+.acciones { display: inline-flex; gap: 0.4rem; flex-wrap: wrap; }
+.boton-enlace { display: inline-block; padding: 0.35rem 0.8rem; border-radius: 6px; border: 1px solid var(--vino); background: var(--vino); color: #fff; text-decoration: none; font-size: 0.9rem; white-space: nowrap; }
+.boton-enlace.secundario { background: #fff; color: var(--vino); }
+.ficha { background: #fff; border: 1px solid var(--borde); border-radius: 8px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
+.ficha h3 { margin-top: 0; }
+.ficha dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1.2rem; margin: 0; }
+.ficha dt { color: #666; }
+.ficha dd { margin: 0; }
