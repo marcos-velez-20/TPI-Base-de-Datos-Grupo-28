@@ -11,6 +11,33 @@ services:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Las migraciones 001..008 se ejecutan en orden alfabético, solo la
+      # primera vez que se crea el volumen (ver nota sobre `down -v`).
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # -h 127.0.0.1 fuerza TCP: durante el init el servidor temporal solo
+      # escucha por socket, así que "healthy" significa migraciones ya aplicadas.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d bodegas_del_atuel"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: ./api
+    container_name: api-bodega
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Dentro de la red de compose la DB es "db:5432" (no localhost:5433).
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: app_rw            # nunca postgres
+      DB_PASSWORD: ${APP_RW_PASSWORD:-cambiar_por_un_secreto}
+      DB_NAME: bodegas_del_atuel
+    ports:
+      - "8000:8000"
 
 volumes:
   pgdata:
