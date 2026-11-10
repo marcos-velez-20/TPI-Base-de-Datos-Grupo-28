@@ -1,0 +1,9 @@
+.tr-cabecera { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.tr-caja { display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: flex-end; background: #fff; border: 1px solid var(--borde); border-radius: 8px; padding: 0.8rem; margin-bottom: 1rem; }
+.tr-caja label { min-width: 160px; }
+.tr-caja .error-banner { flex-basis: 100%; margin-bottom: 0; }
+.tr-ficha { align-items: center; justify-content: space-between; }
+.tr-ficha > div { display: flex; flex-direction: column; gap: 0.2rem; }
+.tr-botones { flex-direction: row !important; gap: 0.5rem !important; }
+.tr-boton { display: inline-block; padding: 0.35rem 0.8rem; border-radius: 6px; border: 1px solid var(--vino); background: var(--vino); color: #fff; text-decoration: none; font-size: 0.9rem; white-space: nowrap; }
+.tr-boton.tr-secundario { background: #fff; color: var(--vino); }
