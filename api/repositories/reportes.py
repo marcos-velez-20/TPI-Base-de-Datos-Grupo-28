@@ -1,4 +1,4 @@
-"""Consultas avanzadas de la sección 8 (solo lectura)."""
+"""Consultas avanzadas (solo lectura)."""
 
 
 def top_vinos(conn, limit):  # S1
@@ -76,4 +76,11 @@ def ficha_vino_maridajes(conn, cod):  # S9 (c)
         "SELECT m.nombre AS maridaje, m.temperatura FROM vino_maridaje vm "
         "JOIN maridaje m ON m.id = vm.cod_maridaje WHERE vm.cod_vino = %s ORDER BY m.nombre",
         (cod,),
+    ).fetchall()
+
+
+def listar_anadas(conn) -> list:
+    """S2: añadas distintas de vinos, ordenadas de forma descendente para el filtro."""
+    return conn.execute(
+        "SELECT DISTINCT anada FROM vino ORDER BY anada DESC",
     ).fetchall()

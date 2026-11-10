@@ -40,12 +40,17 @@ def _obtener_o_404(conn, id_cliente):
 @router.get("")
 def listar_clientes(
     tipo: str | None = None,
+    nombre: str | None = None,
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
 ):
     with transaction() as conn:
-        items = repo.listar_clientes(conn, tipo, limit, (page - 1) * limit)
-        total = repo.contar_clientes(conn, tipo)
+        if nombre:
+            items = repo.buscar_clientes(conn, nombre, limit, (page - 1) * limit)
+            total = len(items)  # approximation for search
+        else:
+            items = repo.listar_clientes(conn, tipo, limit, (page - 1) * limit)
+            total = repo.contar_clientes(conn, tipo)
     return {"page": page, "limit": limit, "total": total, "items": items}
 
 

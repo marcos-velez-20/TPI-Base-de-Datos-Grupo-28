@@ -1,10 +1,17 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from enum import Enum
 
 import schemas
 from database import transaction
 from repositories import transferencias as repo
 
 router = APIRouter(prefix="/transferencias", tags=["Transferencias"])
+
+
+class EnumEstadoTransferencia(str, Enum):
+    en_confeccion = "en_confeccion"
+    terminado = "terminado"
+    procesado = "procesado"
 
 
 def _completa(conn, nro):
@@ -18,6 +25,22 @@ def _completa(conn, nro):
 def _exigir_existencia(conn, nro):
     if not repo.existe(conn, nro):
         raise HTTPException(404, f"La transferencia {nro} no existe")
+
+
+@router.get("")
+def listar_transferencias(
+    estado: EnumEstadoTransferencia | None = Query(
+        None, description="Estado de la transferencia (en_confeccion, terminado, procesado)"
+    ),
+    id_sala: int | None = Query(None, description="ID de la sala"),
+    page: int = Query(1, ge=1, description="Número de página"),
+    limit: int = Query(10, ge=1, le=100, description="Elementos por página"),
+):
+    offset = (page - 1) * limit
+    with transaction() as conn:
+        items = repo.listar_transferencias(conn, estado, id_sala, limit, offset)
+        total = repo.contar_transferencias(conn, estado, id_sala)
+    return {"page": page, "limit": limit, "total": total, "items": items}
 
 
 @router.post("", status_code=201)

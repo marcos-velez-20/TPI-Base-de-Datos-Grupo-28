@@ -1,12 +1,19 @@
 from contextlib import asynccontextmanager
 
+import os
 import psycopg
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import database
 from errors import traducir_error_pg
-from routers import clientes, comprobantes, ingresos, reportes, salud, transferencias, vinos
+from routers import clientes, comprobantes, ingresos, reportes, salud, transferencias, vinos, cepas, bodegas, salas, maridajes
+
+
+def _cors_origins():
+    raw = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:8080")
+    return [o.strip() for o in raw.split(",") if o.strip()]
 
 
 @asynccontextmanager
@@ -23,6 +30,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.exception_handler(psycopg.Error)
 async def manejar_error_postgres(request, exc: psycopg.Error):
@@ -30,5 +45,5 @@ async def manejar_error_postgres(request, exc: psycopg.Error):
     return JSONResponse(status_code=status, content=cuerpo, headers=headers)
 
 
-for r in (salud, vinos, clientes, comprobantes, transferencias, ingresos, reportes):
+for r in (salud, vinos, clientes, comprobantes, transferencias, ingresos, reportes, cepas, bodegas, salas, maridajes):
     app.include_router(r.router)

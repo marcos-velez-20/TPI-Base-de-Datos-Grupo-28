@@ -5,6 +5,42 @@ def existe(conn, nro) -> bool:
     return conn.execute("SELECT 1 FROM transferencias WHERE num_solicitud = %s", (nro,)).fetchone() is not None
 
 
+def listar_transferencias(conn, estado: str | None = None, id_sala: int | None = None, limit: int = 10, offset: int = 0) -> list:
+    """Listado paginado de transferencias con filtros opcionales por estado e id_sala."""
+    where_parts: list[str] = []
+    params: list = []
+    if estado is not None:
+        where_parts.append("estado = %s")
+        params.append(estado)
+    if id_sala is not None:
+        where_parts.append("id_sala = %s")
+        params.append(id_sala)
+    where = (" WHERE " + " AND ".join(where_parts)) if where_parts else ""
+    sql = (
+        "SELECT num_solicitud, fecha_confeccion, estado, id_sala FROM transferencias"
+        + where
+        + " ORDER BY num_solicitud LIMIT %s OFFSET %s"
+    )
+    return conn.execute(sql, [*params, limit, offset]).fetchall()
+
+
+def contar_transferencias(conn, estado: str | None = None, id_sala: int | None = None) -> int:
+    """Devuelve la cantidad total de transferaciones con filtros opcionales."""
+    where_parts: list[str] = []
+    params: list = []
+    if estado is not None:
+        where_parts.append("estado = %s")
+        params.append(estado)
+    if id_sala is not None:
+        where_parts.append("id_sala = %s")
+        params.append(id_sala)
+    where = (" WHERE " + " AND ".join(where_parts)) if where_parts else ""
+    sql = (
+        "SELECT COUNT(*) FROM transferencias" + where
+    )
+    return conn.execute(sql, params).fetchone()["count"]
+
+
 def insertar_transferencia(conn, id_sala) -> int:
     return conn.execute(
         "INSERT INTO transferencias (id_sala) VALUES (%s) RETURNING num_solicitud", (id_sala,)

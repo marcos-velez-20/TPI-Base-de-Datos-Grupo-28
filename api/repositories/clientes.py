@@ -116,5 +116,24 @@ def actualizar_exportador(conn, id_cliente, d):
     )
 
 
+def buscar_clientes(conn, nombre: str, limit: int = 100, offset: int = 0) -> list:
+    """Búsqueda simple por nombre: busca en los subtipos (socio, distribuidor, exportador)
+    y en los campos principales del cliente usando ILIKE."""
+    where = " WHERE (lower(socio_club.nombre) LIKE lower(%s) OR lower(socio_club.apellido) LIKE lower(%s) "
+    where += "OR lower(distribuidores.razonSocial) LIKE lower(%s) "
+    where += "OR lower(exportadores.razonSocial) LIKE lower(%s) )"
+    params = [f"%{nombre}%", f"%{nombre}%", f"%{nombre}%", f"%{nombre}%"]
+    sql = (
+        "SELECT c.id, c.tipoCliente AS tipo_cliente, c.tipo_documento, c.num_documento, "
+        "c.fecha_alta, c.descuento, c.codigo_postal FROM clientes c "
+        "LEFT JOIN socio_club s ON s.id = c.id "
+        "LEFT JOIN distribuidores d ON d.id = c.id "
+        "LEFT JOIN exportadores e ON e.id = c.id "
+        + where
+        + " ORDER BY c.id LIMIT %s OFFSET %s"
+    )
+    return conn.execute(sql, [*params, limit, offset]).fetchall()
+
+
 def eliminar_cliente(conn, id_cliente) -> int:
     return conn.execute("DELETE FROM clientes WHERE id = %s", (id_cliente,)).rowcount

@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 import schemas
 from database import transaction
 from repositories import vinos as repo
+from repositories import reportes as rep_repo
 
 router = APIRouter(prefix="/vinos", tags=["Vinos"])
 
@@ -29,6 +30,18 @@ def listar_vinos(
     with transaction() as conn:
         items = repo.listar_vinos(conn, tipo, cepa, bodega, anada, limit, offset)
         total = repo.contar_vinos(conn, tipo, cepa, bodega, anada)
+    return {"page": page, "limit": limit, "total": total, "items": items}
+
+
+@router.get("/anadas")
+def listar_anadas(
+    page: int = Query(1, ge=1),
+    limit: int = Query(100, ge=1, le=500),
+):
+    offset = (page - 1) * limit
+    with transaction() as conn:
+        items = rep_repo.listar_anadas(conn, limit, offset)
+        total = len(items)
     return {"page": page, "limit": limit, "total": total, "items": items}
 
 
