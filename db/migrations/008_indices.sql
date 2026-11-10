@@ -23,9 +23,3 @@ CREATE INDEX idx_transferencias_pendientes
 -- 6) EXPRESIÓN — búsqueda por apellido sin distinguir mayúsculas.
 CREATE INDEX idx_socio_apellido_lower
     ON socio_club (lower(apellido) text_pattern_ops);
-
--- 7) VARIANTE INCLUDE — consultas por rango de fechas de transferencias optimizando el acceso a la sala.
-CREATE INDEX idx_transferencias_fecha ON transferencias (fecha_confeccion) INCLUDE (id_sala);
-
--- 8) CLAVE FORÁNEA — optimización de búsquedas y uniones (joins) de detalles de transferencia por vino.
-CREATE INDEX idx_detalle_transferencia_vino ON detalle_transferencia (cod_vino);
