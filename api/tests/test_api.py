@@ -1,0 +1,149 @@
+import pytest
+
+SALA = 1
+TRANSPORTE = 1
+
+
+# ------------------------------------------------------------ funcionales
+def test_01_salud(client):
+    r = client.get("/salud")
+    assert r.status_code == 200
+    assert r.json()["estado"] == "ok"
+
+
+def test_02_listar_vinos_con_paginacion(client):
+    r = client.get("/vinos", params={"page": 1, "limit": 3})
+    assert r.status_code == 200
+    cuerpo = r.json()
+    assert len(cuerpo["items"]) <= 3
+    assert cuerpo["limit"] == 3 and cuerpo["total"] >= len(cuerpo["items"])
+
+
+def test_03_filtro_por_tipo(client):
+    r = client.get("/vinos", params={"tipo": "tinto", "limit": 20})
+    assert r.status_code == 200
+    assert all(v["tipo"] == "tinto" for v in r.json()["items"])
+
+
+def test_04_vino_inexistente_404(client):
+    assert client.get("/vinos/999999999").status_code == 404
+
+
+def test_05_inyeccion_sql_es_texto_plano(client):
+    """Los caracteres maliciosos viajan como parámetro: se buscan como texto literal."""
+    antes = client.get("/vinos").json()["total"]
+    for payload in ("' OR '1'='1", "'; DROP TABLE vino; --", "x' UNION SELECT NULL--"):
+        r = client.get("/vinos", params={"tipo": payload})
+        assert r.status_code == 200
+        assert r.json()["items"] == []          # ningún vino tiene ese "tipo"
+        r = client.get("/vinos", params={"bodega": payload})
+        assert r.status_code == 200
+        assert r.json()["items"] == []
+    assert client.get("/vinos").json()["total"] == antes  # la tabla sigue intacta
+
+
+def test_06_crud_cliente_socio(client, socio_payload):
+    creado = client.post("/clientes", json=socio_payload())
+    assert creado.status_code == 201
+    cli = creado.json()
+    assert cli["tipo_cliente"] == "socio" and float(cli["descuento"]) == 10.0
+    assert cli["socio"]["nombre"] == "Ana"
+
+    mod = client.put(f"/clientes/{cli['id']}", json={"socio": {"nombre": "Beatriz"}})
+    assert mod.status_code == 200 and mod.json()["socio"]["nombre"] == "Beatriz"
+
+    assert client.delete(f"/clientes/{cli['id']}").status_code == 204
+    assert client.get(f"/clientes/{cli['id']}").status_code == 404
+
+
+# ------------------------------------------- violaciones de reglas de la BD
+def test_07_precio_negativo_422(client, vino_payload):
+    """CHECK chk_vino_precio_positivo (SQLSTATE 23514) -> 422."""
+    r = client.post("/vinos", json=vino_payload(precio="-50"))
+    assert r.status_code == 422
+    assert r.json()["sqlstate"] == "23514"
+    assert "chk_vino_precio_positivo" in r.json()["detail"]
+
+
+def test_08_corte_distinto_de_100_409(client, vino_payload):
+    """Trigger diferido RN-05 (P0001, se dispara en el COMMIT) -> 409."""
+    r = client.post("/vinos", json=vino_payload(
+        composicion=[{"id_cepa": 1, "porcentaje": "60"}, {"id_cepa": 2, "porcentaje": "30"}]))
+    assert r.status_code == 409
+    assert "RN-05" in r.json()["detail"]
+
+
+def test_09_vino_duplicado_409(client, vino_payload):
+    """UNIQUE (nombre, anada, volumen) RN-01 (SQLSTATE 23505) -> 409."""
+    datos = vino_payload()
+    assert client.post("/vinos", json=datos).status_code == 201
+    r = client.post("/vinos", json=datos)
+    assert r.status_code == 409
+    assert r.json()["sqlstate"] == "23505"
+
+
+def test_10_vender_sin_stock_409(client, vino_payload, socio_payload):
+    """RN-09: el trigger rechaza vender un vino sin stock en la sala."""
+    vino = client.post("/vinos", json=vino_payload()).json()
+    cliente = client.post("/clientes", json=socio_payload()).json()
+    r = client.post("/comprobantes", json={
+        "id_sala": SALA, "id_cliente": cliente["id"],
+        "renglones": [{"cod_vino": vino["id"], "cantidad": 1}]})
+    assert r.status_code == 409
+    assert "Stock insuficiente" in r.json()["detail"]
+
+
+def test_11_procesar_transferencia_sin_terminar_409(client):
+    """Estado inválido: el procedimiento exige estado 'terminado' (P0001) -> 409."""
+    t = client.post("/transferencias", json={"id_sala": SALA})
+    assert t.status_code == 201
+    r = client.post(f"/transferencias/{t.json()['num_solicitud']}/procesar")
+    assert r.status_code == 409
+    assert "terminado" in r.json()["detail"]
+
+
+# ----------------------------------------------------- flujo de punta a punta
+def test_12_flujo_completo_ingreso_transferencia_venta(client, vino_payload, socio_payload, cuit_bodega):
+    vino = client.post("/vinos", json=vino_payload(precio="1000.00")).json()["id"]
+
+    # Ingreso al depósito central: 10 botellas
+    ing = client.post("/ingresos", json={"cuit_bodega": cuit_bodega, "cod_transporte": TRANSPORTE}).json()["id"]
+    assert client.post(f"/ingresos/{ing}/renglones", json={"cod_vino": vino, "cantidad": 10}).status_code == 201
+    assert client.post(f"/ingresos/{ing}/terminar").json()["estado"] == "terminado"
+    assert client.post(f"/ingresos/{ing}/procesar").json()["estado"] == "procesado"
+
+    # Transferencia a la sala: 5 botellas
+    tr = client.post("/transferencias", json={"id_sala": SALA}).json()["num_solicitud"]
+    assert client.post(f"/transferencias/{tr}/renglones", json={"cod_vino": vino, "cantidad": 5}).status_code == 201
+    client.post(f"/transferencias/{tr}/terminar")
+    assert client.post(f"/transferencias/{tr}/procesar").json()["estado"] == "procesado"
+
+    # Un renglón en un documento ya procesado se rechaza (RN-12)
+    tarde = client.post(f"/transferencias/{tr}/renglones", json={"cod_vino": vino, "cantidad": 1})
+    assert tarde.status_code == 409 and "RN-12" in tarde.json()["detail"]
+
+    # Venta a un socio (10 %): 2 x 1000 = 2000, descuento 200, total 1800 (lo calcula la BD)
+    cli = client.post("/clientes", json=socio_payload()).json()["id"]
+    venta = client.post("/comprobantes", json={
+        "id_sala": SALA, "id_cliente": cli, "renglones": [{"cod_vino": vino, "cantidad": 2}]})
+    assert venta.status_code == 201
+    c = venta.json()
+    assert float(c["subtotal"]) == 2000.0 and float(c["descuento"]) == 200.0 and float(c["total"]) == 1800.0
+    assert client.get(f"/comprobantes/{c['numero']}").status_code == 200
+
+    # Quedan 3 en sala: pedir 4 debe fallar y NO dejar comprobante a medias
+    r = client.post("/comprobantes", json={
+        "id_sala": SALA, "id_cliente": cli, "renglones": [{"cod_vino": vino, "cantidad": 4}]})
+    assert r.status_code == 409 and "Stock insuficiente" in r.json()["detail"]
+
+
+@pytest.mark.parametrize("ruta", [
+    "/reportes/top-vinos",
+    "/reportes/ventas-por-sala",
+    f"/reportes/vinos-sin-stock?sala={SALA}",
+    "/reportes/transportista-mayor-actividad",
+])
+def test_13_reportes_responden_200(client, ruta):
+    r = client.get(ruta)
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
