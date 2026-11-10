@@ -81,7 +81,6 @@ function Formulario({ cod, inicial }) {
     setMaridajesSel((sel) => (sel.includes(id) ? sel.filter((m) => m !== id) : [...sel, id]));
 
   // Dato INFORMATIVO. No bloquea el envío: la regla RN-05 la valida la base al COMMIT.
-  const sumaActual = Math.round(filas.reduce((acc, f) => acc + (Number(f.porcentaje) || 0), 0) * 100) / 100;
 
   const guardar = async (e) => {
     e.preventDefault();
@@ -243,7 +242,6 @@ function Formulario({ cod, inicial }) {
             <button type="button" className="secundario" onClick={agregarFila}>
               + Agregar cepa
             </button>
-            <small className="vino-suma">Suma actual: {sumaActual} % (informativa; la regla la valida la base)</small>
           </div>
         </fieldset>
 
