@@ -5,8 +5,8 @@
 -- Aunque se haga ROLLBACK, los números autogenerados (comprobante, ingreso,
 -- sala) avanzan en cada ejecución.
 -- Los parámetros están en el bloque PARÁMETROS: se cambian ahí.
--- Filas afectadas: datos con --seed 42 --fecha-ref 2026-11-08, ejecutado el
--- 2026-11-09.
+-- Filas afectadas: datos generados con --seed 42 el 2026-11-09 (sin
+-- --fecha-ref), ejecutado el 2026-11-09.
 
 -- PARÁMETROS (cada comentario va en su propia línea: \set no admite
 -- comentarios al final)
@@ -65,7 +65,7 @@ ROLLBACK;
 -- Después se asocia a esos vinos; si el maridaje no se hubiera creado, el
 -- segundo INSERT no encuentra nada que asociar. Temperatura: 17 °C, como las
 -- carnes rojas.
--- Filas afectadas: 1 maridaje y 132 asociaciones.
+-- Filas afectadas: 1 maridaje y 126 asociaciones.
 BEGIN;
 
 SELECT COUNT(*) AS tintos_14_o_mas

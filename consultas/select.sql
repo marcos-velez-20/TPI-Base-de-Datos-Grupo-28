@@ -1,15 +1,15 @@
 -- Etapa 5 - Consultas SELECT (S1 a S12)
 -- Los parámetros están en el bloque PARÁMETROS: para probar otro valor del
 -- dataset se cambia ahí. Los períodos se calculan desde CURRENT_DATE.
--- Resultados de referencia: datos con --seed 42 --fecha-ref 2026-11-08,
--- consultados el 2026-11-09.
+-- Resultados de referencia: datos generados con --seed 42 el 2026-11-09 (sin
+-- --fecha-ref), consultados el 2026-11-09.
 
 -- PARÁMETROS (cada comentario va en su propia línea: \set no admite
 -- comentarios al final)
 -- S3: sala
 \set sala_s3 13
 -- S4: vino
-\set vino_s4 34
+\set vino_s4 177
 -- S6: sala
 \set sala_s6 1
 -- S9: vino (1 = Malbec Reserva)
@@ -177,7 +177,8 @@ ORDER BY m.nombre;
 -- Herramienta: CTE y subconsulta correlacionada.
 -- La CTE calcula los kg/ha. La subconsulta correlacionada calcula el promedio
 -- de la misma finca en la misma campaña. Va contra las tablas base y no contra
--- la CTE para poder usar el índice de lote_uva (con la CTE tardaba ~7 s).
+-- la CTE para poder usar los índices de lote_uva y parcelas (una CTE no tiene
+-- índices y habría que recorrerla entera en cada ejecución).
 
 -- S10 (a): rendimiento de todas las parcelas
 WITH rendimiento AS (

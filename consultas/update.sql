@@ -3,8 +3,8 @@
 -- sentencia, control posterior y ROLLBACK (no deja cambios). Para aplicar un
 -- cambio de verdad, cambiar ROLLBACK por COMMIT.
 -- Los parámetros están en el bloque PARÁMETROS: se cambian ahí.
--- Filas afectadas: datos con --seed 42 --fecha-ref 2026-11-08, ejecutado el
--- 2026-11-09.
+-- Filas afectadas: datos generados con --seed 42 el 2026-11-09 (sin
+-- --fecha-ref), ejecutado el 2026-11-09.
 
 -- PARÁMETROS (cada comentario va en su propia línea: \set no admite
 -- comentarios al final)
@@ -19,7 +19,7 @@
 -- cambiar la cantidad: el trigger BEFORE recalcula descuento y subtotal de cada
 -- renglón con fn_descuento_cliente, y el trigger AFTER recalcula la cabecera
 -- con fn_total_comprobante. Sirve, por ejemplo, después de U6.
--- Filas afectadas: 525.446 renglones (tarda unos 45 s). Con los datos recién
+-- Filas afectadas: 525.386 renglones (tarda unos 45 s). Con los datos recién
 -- generados los controles dan 0 antes y después y la suma no cambia, porque
 -- los importes ya eran correctos.
 BEGIN;

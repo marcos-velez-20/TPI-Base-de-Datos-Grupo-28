@@ -3,8 +3,8 @@
 -- sentencia, control posterior y ROLLBACK (no deja cambios). Para aplicar un
 -- cambio de verdad, cambiar ROLLBACK por COMMIT.
 -- Los parámetros están en el bloque PARÁMETROS: se cambian ahí.
--- Filas afectadas: datos con --seed 42 --fecha-ref 2026-11-08, ejecutado el
--- 2026-11-09.
+-- Filas afectadas: datos generados con --seed 42 el 2026-11-09 (sin
+-- --fecha-ref), ejecutado el 2026-11-09.
 
 -- PARÁMETROS (cada comentario va en su propia línea: \set no admite
 -- comentarios al final)
@@ -18,7 +18,7 @@
 -- clientes socios del club.
 -- Los renglones se borran solos por ON DELETE CASCADE. El trigger de los
 -- renglones no devuelve stock al borrar: son ventas históricas.
--- Filas afectadas: 13.089 comprobantes (45.931 renglones).
+-- Filas afectadas: 12.867 comprobantes (45.088 renglones).
 BEGIN;
 
 SELECT COUNT(*) AS comprobantes_a_borrar
@@ -142,7 +142,7 @@ ROLLBACK;
 -- D6. Borrar los clientes socios sin compras que viven en una localidad
 -- específica.
 -- Igual que D4, filtrando por la localidad del cliente.
--- Filas afectadas: 35.
+-- Filas afectadas: 33.
 BEGIN;
 
 SELECT COUNT(*) AS socios_sin_compras
