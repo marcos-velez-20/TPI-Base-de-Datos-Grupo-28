@@ -39,5 +39,17 @@ services:
     ports:
       - "8000:8000"
 
+  front:
+    build: ./front
+    container_name: front-bodega
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      # URL de la API tal como la ve el NAVEGADOR (no la red interna de compose)
+      API_URL: ${API_URL:-http://localhost:8000}
+    ports:
+      - "8080:80"
+
 volumes:
   pgdata:

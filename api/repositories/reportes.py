@@ -79,8 +79,9 @@ def ficha_vino_maridajes(conn, cod):  # S9 (c)
     ).fetchall()
 
 
-def listar_anadas(conn) -> list:
-    """S2: añadas distintas de vinos, ordenadas de forma descendente para el filtro."""
+def listar_anadas(conn, limit: int = 100, offset: int = 0) -> list:
+    """Añadas distintas de vinos, ordenadas de forma descendente para el filtro."""
     return conn.execute(
-        "SELECT DISTINCT anada FROM vino ORDER BY anada DESC",
+        "SELECT DISTINCT anada FROM vino ORDER BY anada DESC LIMIT %s OFFSET %s",
+        (limit, offset),
     ).fetchall()

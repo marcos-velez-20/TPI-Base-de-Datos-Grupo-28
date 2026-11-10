@@ -1,26 +1,46 @@
 """Acceso a datos de clientes (supertipo) y subtipos socio / distribuidor / exportador."""
 
 
-def _filtro_tipo(tipo):
+_FROM_LISTADO = (
+    " FROM clientes c "
+    "LEFT JOIN socio_club s ON s.id = c.id "
+    "LEFT JOIN distribuidores d ON d.id = c.id "
+    "LEFT JOIN exportadores e ON e.id = c.id"
+)
+
+
+def _filtros(tipo, nombre):
+    """WHERE con fragmentos SQL fijos; los valores del usuario viajan como parámetros."""
+    condiciones, params = [], []
     if tipo:
-        return " WHERE lower(c.tipoCliente) = lower(%s)", [tipo]
-    return "", []
+        condiciones.append("lower(c.tipoCliente) = lower(%s)")
+        params.append(tipo)
+    if nombre:
+        condiciones.append(
+            "(s.nombre ILIKE %s OR s.apellido ILIKE %s OR (s.nombre || ' ' || s.apellido) ILIKE %s "
+            "OR d.razonSocial ILIKE %s OR e.razonSocial ILIKE %s)"
+        )
+        params.extend([f"%{nombre}%"] * 5)
+    where = (" WHERE " + " AND ".join(condiciones)) if condiciones else ""
+    return where, params
 
 
-def listar_clientes(conn, tipo, limit, offset):
-    where, params = _filtro_tipo(tipo)
+def listar_clientes(conn, tipo, nombre, limit, offset):
+    where, params = _filtros(tipo, nombre)
     sql = (
         "SELECT c.id, c.tipoCliente AS tipo_cliente, c.tipo_documento, c.num_documento, "
-        "c.fecha_alta, c.descuento, c.codigo_postal FROM clientes c"
+        "c.fecha_alta, c.descuento, c.codigo_postal, "
+        "COALESCE(s.nombre || ' ' || s.apellido, d.razonSocial, e.razonSocial) AS nombre"
+        + _FROM_LISTADO
         + where
         + " ORDER BY c.id LIMIT %s OFFSET %s"
     )
     return conn.execute(sql, [*params, limit, offset]).fetchall()
 
 
-def contar_clientes(conn, tipo) -> int:
-    where, params = _filtro_tipo(tipo)
-    return conn.execute("SELECT COUNT(*) AS total FROM clientes c" + where, params).fetchone()["total"]
+def contar_clientes(conn, tipo, nombre=None) -> int:
+    where, params = _filtros(tipo, nombre)
+    return conn.execute("SELECT COUNT(*) AS total" + _FROM_LISTADO + where, params).fetchone()["total"]
 
 
 def obtener_cliente(conn, id_cliente):
@@ -114,25 +134,6 @@ def actualizar_exportador(conn, id_cliente, d):
         "razonSocial = COALESCE(%(razon_social)s, razonSocial) WHERE id = %(id)s",
         {**d, "id": id_cliente},
     )
-
-
-def buscar_clientes(conn, nombre: str, limit: int = 100, offset: int = 0) -> list:
-    """Búsqueda simple por nombre: busca en los subtipos (socio, distribuidor, exportador)
-    y en los campos principales del cliente usando ILIKE."""
-    where = " WHERE (lower(socio_club.nombre) LIKE lower(%s) OR lower(socio_club.apellido) LIKE lower(%s) "
-    where += "OR lower(distribuidores.razonSocial) LIKE lower(%s) "
-    where += "OR lower(exportadores.razonSocial) LIKE lower(%s) )"
-    params = [f"%{nombre}%", f"%{nombre}%", f"%{nombre}%", f"%{nombre}%"]
-    sql = (
-        "SELECT c.id, c.tipoCliente AS tipo_cliente, c.tipo_documento, c.num_documento, "
-        "c.fecha_alta, c.descuento, c.codigo_postal FROM clientes c "
-        "LEFT JOIN socio_club s ON s.id = c.id "
-        "LEFT JOIN distribuidores d ON d.id = c.id "
-        "LEFT JOIN exportadores e ON e.id = c.id "
-        + where
-        + " ORDER BY c.id LIMIT %s OFFSET %s"
-    )
-    return conn.execute(sql, [*params, limit, offset]).fetchall()
 
 
 def eliminar_cliente(conn, id_cliente) -> int:

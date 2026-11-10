@@ -101,10 +101,8 @@ def test_11_clientes_busqueda_por_nombre(client, socio_payload, codigo_postal):
     cuerpo = r.json()
     assert len(cuerpo["items"]) >= 1
     # Verificar que el cliente creado aparezca en los resultados
-    nombres_encontrado = any(
-        c["socio"]["nombre"] == "Ana" for c in cuerpo["items"] if "socio" in c
-    )
-    assert nombres_encontrado
+    assert all("nombre" in c for c in cuerpo["items"])
+    assert any("Ana" in c["nombre"] for c in cuerpo["items"])
 
 
 def test_12_vinos_anadas(client):

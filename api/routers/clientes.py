@@ -45,12 +45,8 @@ def listar_clientes(
     limit: int = Query(10, ge=1, le=100),
 ):
     with transaction() as conn:
-        if nombre:
-            items = repo.buscar_clientes(conn, nombre, limit, (page - 1) * limit)
-            total = len(items)  # approximation for search
-        else:
-            items = repo.listar_clientes(conn, tipo, limit, (page - 1) * limit)
-            total = repo.contar_clientes(conn, tipo)
+        items = repo.listar_clientes(conn, tipo, nombre, limit, (page - 1) * limit)
+        total = repo.contar_clientes(conn, tipo, nombre)
     return {"page": page, "limit": limit, "total": total, "items": items}
 
 
