@@ -1,0 +1,42 @@
+:root {
+  --vino: #7b1e3a;
+  --vino-oscuro: #5a1429;
+  --gris: #f4f4f6;
+  --borde: #d9d9e0;
+  --ok: #1a7f37;
+  --error: #b42318;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--gris); color: #222; }
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+.cabecera { background: var(--vino); color: #fff; padding: 0.6rem 1.2rem; display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem; }
+.cabecera h1 { font-size: 1.2rem; margin: 0; }
+.cabecera nav { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.cabecera a { color: #fff; text-decoration: none; padding: 0.35rem 0.8rem; border-radius: 6px; }
+.cabecera a:hover { background: var(--vino-oscuro); }
+.cabecera a.active { background: #fff; color: var(--vino); font-weight: 600; }
+.contenido { flex: 1; padding: 1.2rem; max-width: 1100px; width: 100%; margin: 0 auto; }
+.pie { padding: 0.6rem 1.2rem; border-top: 1px solid var(--borde); background: #fff; font-size: 0.85rem; }
+.estado-ok { color: var(--ok); font-weight: 600; }
+.estado-error { color: var(--error); font-weight: 600; }
+.estado-verificando { color: #666; }
+h2 { margin-top: 0; color: var(--vino); }
+.tabla { width: 100%; border-collapse: collapse; background: #fff; }
+.tabla th, .tabla td { padding: 0.5rem 0.7rem; text-align: left; border-bottom: 1px solid var(--borde); }
+.tabla th { background: #ececf1; font-size: 0.85rem; }
+.vacio, .cargando { color: #666; padding: 1rem 0; }
+.paginador { display: flex; align-items: center; gap: 1rem; margin: 1rem 0; }
+button { cursor: pointer; padding: 0.4rem 0.9rem; border-radius: 6px; border: 1px solid var(--vino); background: var(--vino); color: #fff; font: inherit; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.secundario { background: #fff; color: var(--vino); }
+button.enlace { background: none; border: none; color: inherit; text-decoration: underline; padding: 0; }
+input, select { padding: 0.4rem 0.6rem; border: 1px solid var(--borde); border-radius: 6px; font: inherit; background: #fff; }
+label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; }
+.error-banner { background: #fdecea; border: 1px solid var(--error); color: var(--error); padding: 0.7rem 1rem; border-radius: 6px; margin-bottom: 1rem; display: flex; justify-content: space-between; gap: 1rem; }
+.error-mensaje { margin-left: 0.6rem; }
+.error-sqlstate { margin-left: 0.8rem; opacity: 0.7; }
+.badge { display: inline-block; padding: 0.1rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; background: #ddd; }
+.badge-en_confeccion { background: #fff3cd; color: #7a5b00; }
+.badge-terminado { background: #d6e9ff; color: #0b4a8f; }
+.badge-procesado { background: #d4f4dd; color: #14602b; }
