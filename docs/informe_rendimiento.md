@@ -88,7 +88,7 @@ ORDER BY cl.id;
 | --- | --- | --- | --- | --- | --- |
 | 1 | `idx_comprobante_sala_fecha` | Compuesto | Q2 | Filtra por igualdad de sala y rango de fechas. Con la igualdad primero, el índice devuelve juntas las filas de esa sala en la última semana sin leer el resto. | 2256 kB |
 | 2 | `idx_comprobante_fecha_cubriente` | INCLUDE (covering) | Q3 | Filtra solo por rango de fecha y necesita `id_sala` y `total`. Al incluirlos en la hoja del índice, se resuelve con un Index Only Scan sin visitar la tabla. | 7544 kB |
-| 3 | `idx_comprobante_cliente` | Clave foránea | Q5 (S12 a) | PostgreSQL no indexa las FK por defecto. Cubre la FK a clientes (`ON DELETE RESTRICT`) y la búsqueda de comprobantes por cliente. En Q5 reemplaza el Seq Scan sobre comprobante dentro del subplan por un Bitmap Index Scan. En Q4 el planificador lo ignora (ver Tabla 8). | 1704 kB |
+| 3 | `idx_comprobante_cliente` | Clave foránea | Q5 (S12 a) | PostgreSQL no indexa las FK por defecto. Cubre la FK a clientes (`ON DELETE RESTRICT`) y la búsqueda de comprobantes por cliente. En Q5 reemplaza el Seq Scan sobre comprobante dentro del subplan por un Bitmap Index Scan. En Q4 el planificador lo ignora (ver Tabla 4). | 1704 kB |
 | 4 | `idx_detalle_comprobante_vino` | FK + INCLUDE | Ninguna medida (Q1 lo ignora) | La PK (cod_comprobante, cod_vino) sirve para buscar por comprobante pero no por vino. INCLUDE (cantidad, cod_comprobante) lo deja listo para un Index Only Scan. Se mantiene por la FK a vino y el `ON DELETE RESTRICT`; en Q1 el planificador lo ignora y en Q5 el acceso lo resuelve la PK. | 16 MB |
 |5	| `idx_transferencias_pendientes` |Parcial	|S5	| Solo una fracción de las transferencias no está procesada; el índice es chico y solo lo usan consultas con el mismo predicado estado <> `procesado`.| 16 kB| 
 |6|	`idx_socio_apellido_lower`	|Expresión|	Búsqueda por apellido|	Sin índice sobre lower(apellido) una búsqueda sin distinguir mayúsculas no puede usar índice. text_pattern_ops permite LIKE con prefijo| 152kB|
@@ -170,15 +170,13 @@ Efectividad de Índices Compuestos y Cubrientes (INCLUDE): El uso de índices co
 
 Descarte de Índices Ineficientes (BRIN): La evaluación del índice BRIN sobre la columna fecha evidenció que, ante una distribución de datos sin correlación física estricta, el motor descarta la estructura en favor de un escaneo secuencial. Esto ratificó la decisión de priorizar índices B-Tree tradicionales.
 
-Optimización de Transferencias con Cruce Geográfico (Q5/S4): Al incorporar índices específicos sobre transferencias (idx_transferencias_fecha con INCLUDE) y detalle_transferencia (idx_detalle_transferencia_vino), el motor pasa de evaluar las tablas mediante escaneos secuenciales forzados a utilizar eficientes Bitmap Heap Scans. Esto redujo el tiempo de la consulta S4 de 1,69 ms a 0,52 ms y optimizó la unificación de datos logísticos con las tablas sala_de_ventas y localidades para reportes de distribución.
-
 ### Inteligencia del Planificador (Costos y Selectividad)
 
 Las pruebas de baja selectividad (Sección 8) mostraron que el optimizador descarta el índice cuando la consulta abarca la mayor parte de la tabla (80% en el caso 8.1), porque estima más caro el acceso aleatorio. En nuestra medición, con los datos en caché, el plan forzado fue algo más rápido: la decisión del planificador se basa en costos estimados para disco, que pueden diferir del tiempo real cuando todo está en memoria.
 
 ## 10. Anexo: Planes de ejecución completos (EXPLAIN ANALYZE, BUFFERS)
 
-A continuación se adjuntan los planes de ejecución detallados obtenidos mediante la herramienta de *benchmarking* `psqlb`, comparando el comportamiento de las consultas críticas antes y después de aplicar la estrategia de indexación de la Etapa 4.
+A continuación se adjuntan los planes de ejecución detallados obtenidos con `psql`, comparando el comportamiento de las consultas críticas antes y después de aplicar la estrategia de indexación de la Etapa 4.
 
 ### A.1 Antes de crear los índices
 ```text
