@@ -9,3 +9,6 @@ api/.env
 .venv/
 __pycache__/
 .pytest_cache/
+
+# Volcado de la base: supera el tamaño permitido
+dump_completo.sql.gz

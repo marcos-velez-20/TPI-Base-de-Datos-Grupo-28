@@ -171,7 +171,7 @@ Aplicación React 18 con Vite, React Router y Chart.js, servida con nginx desde 
 
 Los tres servicios (`db`, `api` y `front`) se definen en `docker-compose.yml`. La base aplica las migraciones 001 a 008 al crearse el volumen y su healthcheck garantiza que la API arranque recién cuando las migraciones terminaron. La API se conecta con `app_rw`, nunca con el propietario, y las credenciales se pasan por variables de entorno.
 
-**Backup y restauración:** el volcado se genera con `pg_dump` sin dueños ni permisos (`dump_completo.sql.gz`, 9,8 MB) y se restaura en una base nueva con `psql`. Como el volcado no incluye roles ni privilegios, después de restaurar se vuelve a aplicar `007_roles.sql`. La restauración se verifica comparando los conteos de `comprobante`, `detalle_comprobante`, `clientes` y `vino` entre la base original y la nueva. Los comandos completos están en `db/seed/README.md` y en el `README.md` principal.
+**Backup y restauración:** el volcado se genera con `pg_dump` sin dueños ni permisos (`dump_completo.sql.gz`; no se sube al repositorio porque supera el tamaño permitido, pero se genera con los comandos del README) y se restaura en una base nueva con `psql`. Como el volcado no incluye roles ni privilegios, después de restaurar se vuelve a aplicar `007_roles.sql`. La restauración se verifica comparando los conteos de `comprobante`, `detalle_comprobante`, `clientes` y `vino` entre la base original y la nueva. Los comandos completos están en `db/seed/README.md` y en el `README.md` principal.
 
 ## 9. Conclusiones
 

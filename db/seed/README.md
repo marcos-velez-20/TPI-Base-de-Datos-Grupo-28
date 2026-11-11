@@ -275,8 +275,9 @@ for base in bodegas_del_atuel bodegas_nueva; do
 done
 ```
 
-Si el dump comprimido supera los 100 MB, no subirlo al repositorio y agregarlo
-a `.gitignore`. El tamaño actual es de **9.8 MB**.
+El dump comprimido supera el tamaño permitido para el repositorio, por eso no
+se sube (está en `.gitignore`). Se genera con los comandos de esta sección a
+partir de la base cargada con `generar_datos.py --seed 42`, así que es reproducible.
 
 ## Reporte de la Etapa 3
 
