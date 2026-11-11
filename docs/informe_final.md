@@ -128,7 +128,7 @@ Puntos a destacar en la defensa:
 
 ## 6. Consultas SQL
 
-Todas las consignas de la sección 8 están en [`../consultas/`](../consultas/) (`insert.sql`, `update.sql`, `delete.sql`, `select.sql`), comentadas y probadas dentro de `BEGIN … ROLLBACK`.
+Todas las consignas de la sección 8 están en [`../consultas/`](../consultas/) (`insert.sql`, `update.sql`, `delete.sql`, `select.sql`), comentadas y probadas dentro de `BEGIN … ROLLBACK`. Los planes de ejecución (`EXPLAIN (ANALYZE, BUFFERS)`) de las consultas de la Etapa 4 y de S9 a S12 están en [`informe_etapa5.md`](informe_etapa5.md).
 
 Cuatro consultas que muestran las herramientas pedidas:
 
