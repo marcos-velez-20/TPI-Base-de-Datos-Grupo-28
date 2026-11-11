@@ -140,7 +140,7 @@ Documentación interactiva en `/docs`. Endpoints principales:
 | Comprobantes | `POST /comprobantes` (cabecera + renglones en una transacción), `GET /comprobantes/{nro}` |
 | Transferencias | `GET/POST /transferencias`, `GET /transferencias/{nro}`, `POST …/{nro}/renglones`, `POST …/{nro}/terminar`, `POST …/{nro}/procesar` |
 | Ingresos | `GET/POST /ingresos`, `GET /ingresos/{cod}`, `POST …/{cod}/renglones`, `POST …/{cod}/terminar`, `POST …/{cod}/procesar` |
-| Reportes | `GET /reportes/top-vinos`, `/ventas-por-sala`, `/vinos-sin-stock?sala=`, `/transportista-mayor-actividad`, `/ficha-vino/{cod}` |
+| Reportes | `GET /reportes/top-vinos`, `/ventas-por-sala`, `/vinos-sin-stock?sala=`, `/transportista-mayor-actividad`, `/ficha-vino/{cod}`, `/trazabilidad/{cod}` (ingresos, transferencias y ventas de un vino) |
 | Catálogos | `GET /cepas`, `/bodegas`, `/salas`, `/maridajes` |
 | Salud | `GET /salud` |
 

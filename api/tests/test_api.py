@@ -92,7 +92,8 @@ def test_10_listar_maridajes(client):
 def test_11_clientes_busqueda_por_nombre(client, socio_payload, codigo_postal):
     """Búsqueda simple por nombre en el endpoint GET /clientes?nombre=<texto>."""
     # Crear un cliente socio para tener un nombre de subtipo que buscar
-    creado = client.post("/clientes", json=socio_payload(codigo_postal=codigo_postal()))
+    # socio_payload ya usa el código postal de la fixture codigo_postal.
+    creado = client.post("/clientes", json=socio_payload())
     assert creado.status_code == 201
     cli = creado.json()
     # Buscar por el nombre "Ana" que pusimos en la fixture
@@ -219,7 +220,7 @@ def test_20_flujo_completo_ingreso_transferencia_venta(client, vino_payload, soc
     cli = client.post("/clientes", json=socio_payload()).json()["id"]
     venta = client.post("/comprobantes", json={
         "id_sala": SALA, "id_cliente": cli, "renglones": [{"cod_vino": vino, "cantidad": 2}]})
-    assert venta.status_code == 201
+    assert venta.status_code == 201, venta.json()
     c = venta.json()
     assert float(c["subtotal"]) == 2000.0 and float(c["descuento"]) == 200.0 and float(c["total"]) == 1800.0
     assert client.get(f"/comprobantes/{c['numero']}").status_code == 200
@@ -235,12 +236,45 @@ def test_20_flujo_completo_ingreso_transferencia_venta(client, vino_payload, soc
     "/reportes/ventas-por-sala",
     f"/reportes/vinos-sin-stock?sala={SALA}",
     "/reportes/transportista-mayor-actividad",
-    "/cepas",
-    "/bodegas",
-    "/salas",
-    "/maridajes",
 ])
 def test_21_reportes_responden_200(client, ruta):
+    """Los reportes devuelven una lista de filas."""
     r = client.get(ruta)
     assert r.status_code == 200
     assert isinstance(r.json(), list)
+
+
+@pytest.mark.parametrize("ruta", ["/cepas", "/bodegas", "/salas", "/maridajes"])
+def test_22_catalogos_paginados_responden_200(client, ruta):
+    """Los catálogos devuelven un listado paginado: {items, total, page, limit}."""
+    r = client.get(ruta)
+    assert r.status_code == 200
+    cuerpo = r.json()
+    assert isinstance(cuerpo["items"], list) and len(cuerpo["items"]) > 0
+    assert cuerpo["total"] >= len(cuerpo["items"])
+
+
+def test_23_trazabilidad_de_un_vino(client, vino_payload, cuit_bodega):
+    """GET /reportes/trazabilidad/{cod}: el ingreso y la transferencia del vino aparecen en su recorrido."""
+    vino = client.post("/vinos", json=vino_payload()).json()["id"]
+    ing = client.post("/ingresos", json={"cuit_bodega": cuit_bodega, "cod_transporte": 1}).json()["id"]
+    client.post(f"/ingresos/{ing}/renglones", json={"cod_vino": vino, "cantidad": 8})
+    client.post(f"/ingresos/{ing}/terminar")
+    client.post(f"/ingresos/{ing}/procesar")
+    tr = client.post("/transferencias", json={"id_sala": SALA}).json()["num_solicitud"]
+    client.post(f"/transferencias/{tr}/renglones", json={"cod_vino": vino, "cantidad": 3})
+    client.post(f"/transferencias/{tr}/terminar")
+    client.post(f"/transferencias/{tr}/procesar")
+
+    r = client.get(f"/reportes/trazabilidad/{vino}")
+    assert r.status_code == 200
+    t = r.json()
+    assert t["vino"]["id"] == vino
+    assert any(i["ingreso"] == ing and i["cantidad"] == 8 for i in t["ingresos"])
+    assert any(x["transferencia"] == tr and x["cantidad"] == 3 for x in t["transferencias"])
+    assert t["vino"]["stock_deposito"] == 5 and t["vino"]["stock_salas"] == 3
+    assert t["ventas_por_sala"] == []
+
+
+def test_24_trazabilidad_vino_inexistente_404(client):
+    assert client.get("/reportes/trazabilidad/999999").status_code == 404

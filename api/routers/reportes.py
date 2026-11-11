@@ -44,3 +44,19 @@ def ficha_vino(cod: int):
         ficha["cepas"] = repo.ficha_vino_cepas(conn, cod)
         ficha["maridajes"] = repo.ficha_vino_maridajes(conn, cod)
         return ficha
+
+
+@router.get("/trazabilidad/{cod}")
+def trazabilidad(cod: int):
+    """Recorrido de un vino: datos y stock actual, ingresos al depósito central,
+    transferencias a las salas y ventas resumidas por sala. Todo lo calcula la base."""
+    with transaction() as conn:
+        vino = repo.ficha_vino_datos(conn, cod)
+        if vino is None:
+            raise HTTPException(404, f"El vino {cod} no existe")
+        return {
+            "vino": vino,
+            "ingresos": repo.trazabilidad_ingresos(conn, cod),
+            "transferencias": repo.trazabilidad_transferencias(conn, cod),
+            "ventas_por_sala": repo.trazabilidad_ventas(conn, cod),
+        }

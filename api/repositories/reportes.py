@@ -85,3 +85,44 @@ def listar_anadas(conn, limit: int = 100, offset: int = 0) -> list:
         "SELECT DISTINCT anada FROM vino ORDER BY anada DESC LIMIT %s OFFSET %s",
         (limit, offset),
     ).fetchall()
+
+
+def trazabilidad_ingresos(conn, cod):  # Trazabilidad: entradas al depósito central
+    return conn.execute(
+        "SELECT i.id AS ingreso, i.fecha, i.estado, b.razon_social AS bodega, "
+        "et.razon_social AS transportista, di.cantidad "
+        "FROM detalle_ingreso di "
+        "JOIN ingresos i ON i.id = di.num_ingreso "
+        "JOIN bodega b ON b.cuit = i.cuit_bodega "
+        "JOIN empresa_transporte et ON et.cod_transporte = i.cod_transporte "
+        "WHERE di.cod_vino = %s ORDER BY i.fecha DESC, i.id DESC",
+        (cod,),
+    ).fetchall()
+
+
+def trazabilidad_transferencias(conn, cod):  # Trazabilidad: salidas del depósito a las salas
+    return conn.execute(
+        "SELECT t.num_solicitud AS transferencia, t.fecha_confeccion, t.estado, "
+        "t.id_sala, l.nombre AS localidad, dt.cantidad "
+        "FROM detalle_transferencia dt "
+        "JOIN transferencias t ON t.num_solicitud = dt.num_transferencia "
+        "JOIN sala_de_ventas s ON s.id_sala = t.id_sala "
+        "JOIN localidades l ON l.codigo_postal = s.codigo_postal "
+        "WHERE dt.cod_vino = %s ORDER BY t.fecha_confeccion DESC, t.num_solicitud DESC",
+        (cod,),
+    ).fetchall()
+
+
+def trazabilidad_ventas(conn, cod):  # Trazabilidad: ventas resumidas por sala
+    return conn.execute(
+        "SELECT c.id_sala, l.nombre AS localidad, COUNT(*) AS comprobantes, "
+        "SUM(dc.cantidad) AS botellas, SUM(dc.subtotal) AS monto, "
+        "MIN(c.fecha) AS primera_venta, MAX(c.fecha) AS ultima_venta "
+        "FROM detalle_comprobante dc "
+        "JOIN comprobante c ON c.numero = dc.cod_comprobante "
+        "JOIN sala_de_ventas s ON s.id_sala = c.id_sala "
+        "JOIN localidades l ON l.codigo_postal = s.codigo_postal "
+        "WHERE dc.cod_vino = %s "
+        "GROUP BY c.id_sala, l.nombre ORDER BY botellas DESC",
+        (cod,),
+    ).fetchall()
